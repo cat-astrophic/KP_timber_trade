@@ -11,7 +11,7 @@ library(sandwich)
 
 # Directory info
 
-username <- 'Michael'
+username <- ''
 direc <- paste('C:/Users/', username, '/Documents/Data/KP_timber_trade/', sep = '')
 
 # Reading in the forest products trade data
