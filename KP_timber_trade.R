@@ -1,0 +1,10783 @@
+# This script runs econometric analyses for the KP forestry products trade network project
+
+# Loading libraries
+
+library(ggplot2)
+library(stargazer)
+library(sandwich)
+#library(kableExtra)
+#library(modelsummary)
+#library(AER)
+
+# Directory info
+
+username <- 'Michael'
+direc <- paste('C:/Users/', username, '/Documents/Data/KP_timber_trade/', sep = '')
+
+# Reading in the forest products trade data
+
+trade.data <- read.csv(paste(direc, 'data/forest_products.csv', sep = ''))
+plywood <- read.csv(paste(direc, 'data/plywood.csv', sep = ''))
+paper.and.paperboard <- read.csv(paste(direc, 'data/paper_and_paperboard.csv', sep = ''))
+industrial.roundwood.non.coniferous.non.tropical <- read.csv(paste(direc, 'data/industrial_roundwood_non_coniferous_non_tropical.csv', sep = ''))
+sawnwood.coniferous <- read.csv(paste(direc, 'data/sawnwood_coniferous.csv', sep = ''))
+veneer.sheets <- read.csv(paste(direc, 'data/veneer_sheets.csv', sep = ''))
+newsprint <- read.csv(paste(direc, 'data/newsprint.csv', sep = ''))
+fibreboard <- read.csv(paste(direc, 'data/fibreboard.csv', sep = ''))
+industrial.roundwood.coniferous <- read.csv(paste(direc, 'data/industrial_roundwood_coniferous.csv', sep = ''))
+sawnwood.non.coniferous <- read.csv(paste(direc, 'data/sawnwood_non_coniferous.csv', sep = ''))
+wood.pulp <- read.csv(paste(direc, 'data/wood_pulp.csv', sep = ''))
+industrial.roundwood.non.coniferous.tropical <- read.csv(paste(direc, 'data/industrial_roundwood_non_coniferous_tropical.csv', sep = ''))
+wood.chips.and.particles <- read.csv(paste(direc, 'data/wood_chips_and_particles.csv', sep = ''))
+
+# Reading in controls
+
+controls <- read.csv(paste(direc, 'data/controls.csv', sep = ''))
+
+# Matching nations from data and controls
+
+# Data prep
+
+nations.delta.pre <- c('Bolivia (Plurinational State of)', "Cï¿½te d'Ivoire")
+nations.delta.post <- c('Bolivia', "Cote d'Ivoire")
+nations.drop <- c('Belgium-Luxembourg', 'Netherlands Antilles (former)', 'Serbia and Montenegro')
+conations.delta.pre <- c('Bahamas, The', 'Congo, Dem. Rep.', 'Congo, Rep.', 'Czech Republic',
+                         'Egypt, Arab Rep.', 'Gambia, The', 'Iran, Islamic Rep.', 'Korea, Dem. Peopleâ???Ts Rep.',
+                         'Korea, Rep.', 'Kyrgyz Republic', 'Lao PDR', 'Moldova', 'Slovak Republic',
+                         'St. Vincent and the Grenadines', 'Sudan', 'Tanzania', 'United States',
+                         'Venezuela, RB', 'Vietnam', 'Yemen, Rep.')
+conations.delta.post <- c('Bahamas', 'Democratic Republic of the Congo', 'Congo', 'Czechia',
+                          'Egypt', 'Gambia', 'Iran (Islamic Republic of)', "Democratic People's Republic of Korea",
+                          'Republic of Korea', 'Kyrgyzstan', "Lao People's Democratic Republic",  'Republic of Moldova',
+                          'Slovakia', 'Saint Vincent and the Grenadines', 'Sudan (former)', 'United Republic of Tanzania',
+                          'United States of America', 'Venezuela (Bolivarian Republic of)', 'Viet Nam', 'Yemen')
+
+nations <- unique(trade.data$Nation)
+conations <- unique(controls$Country.Name)
+
+nations.post.ids <- which(nations %in% nations.delta.pre)
+conations.post.ids <- which(conations %in% conations.delta.pre)
+
+for (i in 1:length(nations.post.ids)) {
+  
+  nations[nations.post.ids[i]] <- nations.delta.post[i]
+  
+}
+
+for (d in nations.drop) {
+  
+  nations <- nations[nations != d]
+  
+}
+
+for (i in 1:length(conations.post.ids)) {
+  
+conations[conations.post.ids[i]] <- conations.delta.post[i]
+  
+}
+
+names(controls)[1] <- 'Nation'
+
+# Merging the trade data and controls
+
+trade.data <- merge(trade.data, controls, by = c('Nation', 'Year'))
+plywood <- merge(plywood, controls, by = c('Nation', 'Year'))
+paper.and.paperboard <- merge(paper.and.paperboard, controls, by = c('Nation', 'Year'))
+industrial.roundwood.non.coniferous.non.tropical <- merge(industrial.roundwood.non.coniferous.non.tropical, controls, by = c('Nation', 'Year'))
+sawnwood.coniferous <- merge(sawnwood.coniferous, controls, by = c('Nation', 'Year'))
+veneer.sheets <- merge(veneer.sheets, controls, by = c('Nation', 'Year'))
+newsprint <- merge(newsprint, controls, by = c('Nation', 'Year'))
+fibreboard <- merge(fibreboard, controls, by = c('Nation', 'Year'))
+industrial.roundwood.coniferous <- merge(industrial.roundwood.coniferous, controls, by = c('Nation', 'Year'))
+sawnwood.non.coniferous <- merge(sawnwood.non.coniferous, controls, by = c('Nation', 'Year'))
+wood.pulp <- merge(wood.pulp, controls, by = c('Nation', 'Year'))
+industrial.roundwood.non.coniferous.tropical <- merge(industrial.roundwood.non.coniferous.tropical, controls, by = c('Nation', 'Year'))
+wood.chips.and.particles <- merge(wood.chips.and.particles, controls, by = c('Nation', 'Year'))
+
+# Further adding KP indicator variables
+
+kp.nations <- c('Australia', 'Austria', 'Belarus', 'Belgium', 'Bulgaria', 'Canada', 'Croatia', 
+                'Cyprus', 'Czechia', 'Denmark', 'Estonia', 'Finland', 'France', 'Germany', 
+                'Greece', 'Hungary', 'Iceland', 'Ireland', 'Italy', 'Japan', 'Kazakhstan', 
+                'Latvia', 'Lithuania', 'Luxembourg', 'Netherlands', 'New Zealand', 'Norway', 
+                'Poland', 'Portugal', 'Romania', 'Russian Federation', 'Slovakia', 
+                'Slovenia', 'Spain', 'Sweden', 'Switzerland', 'Ukraine', 'United Kingdom')
+kp.nations.1 <- c('Canada', 'Japan',  'New Zealand', 'Russian Federation')
+kp.nations.2 <- c('Belarus', 'Cyprus', 'Kazakhstan')
+
+kp.df <- trade.data[,c('Nation', 'Year')]
+
+kp <- as.numeric(kp.df$Nation %in% c(kp.nations, kp.nations.1,kp.nations.2))
+post <- as.numeric(kp.df$Year >= 2008)
+post.plus1 <- as.numeric(kp.df$Year >= 2007)
+post.plus2 <- as.numeric(kp.df$Year >= 2006)
+post.plus3 <- as.numeric(kp.df$Year >= 2005)
+
+kp.df$KP <- kp
+kp.df$Post <- post
+kp.df$Post1 <- post.plus1
+kp.df$Post2 <- post.plus2
+kp.df$Post3 <- post.plus3
+
+trade.data <- merge(trade.data, kp.df, by = c('Nation', 'Year'))
+plywood <- merge(plywood, kp.df, by = c('Nation', 'Year'))
+paper.and.paperboard <- merge(paper.and.paperboard, kp.df, by = c('Nation', 'Year'))
+industrial.roundwood.non.coniferous.non.tropical <- merge(industrial.roundwood.non.coniferous.non.tropical, kp.df, by = c('Nation', 'Year'))
+sawnwood.coniferous <- merge(sawnwood.coniferous, kp.df, by = c('Nation', 'Year'))
+veneer.sheets <- merge(veneer.sheets, kp.df, by = c('Nation', 'Year'))
+newsprint <- merge(newsprint, kp.df, by = c('Nation', 'Year'))
+fibreboard <- merge(fibreboard, kp.df, by = c('Nation', 'Year'))
+industrial.roundwood.coniferous <- merge(industrial.roundwood.coniferous, kp.df, by = c('Nation', 'Year'))
+sawnwood.non.coniferous <- merge(sawnwood.non.coniferous, kp.df, by = c('Nation', 'Year'))
+wood.pulp <- merge(wood.pulp, kp.df, by = c('Nation', 'Year'))
+industrial.roundwood.non.coniferous.tropical <- merge(industrial.roundwood.non.coniferous.tropical, kp.df, by = c('Nation', 'Year'))
+wood.chips.and.particles <- merge(wood.chips.and.particles, kp.df, by = c('Nation', 'Year'))
+
+# Running regressions
+
+# Standard KP variable with no lead
+
+# Trade Data
+
+trade.data.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.btw.clustered <- coeftest(trade.data.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.btw, trade.data.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.clo.clustered <- coeftest(trade.data.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.clo, trade.data.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.eig.clustered <- coeftest(trade.data.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.eig, trade.data.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.ind.clustered <- coeftest(trade.data.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.ind, trade.data.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.oud.clustered <- coeftest(trade.data.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.oud, trade.data.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.clu.clustered <- coeftest(trade.data.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.clu, trade.data.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.btwC.clustered <- coeftest(trade.data.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.btwC, trade.data.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.cloC.clustered <- coeftest(trade.data.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.cloC, trade.data.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.eigC.clustered <- coeftest(trade.data.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.eigC, trade.data.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.cluC.clustered <- coeftest(trade.data.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.cluC, trade.data.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Plywood
+
+plywood.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                  + GDP.per.capita..constant.2010.US..
+                  + Ores.and.metals.exports....of.merchandise.exports.
+                  + Ores.and.metals.imports....of.merchandise.imports.
+                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                  + Tariff.rate..applied..weighted.mean..all.products....
+                  + Tariff.rate..applied..weighted.mean..primary.products....
+                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                  + Average.Clustering.Coefficient...Trade
+                  + factor(Nation) + factor(Year), data = plywood)
+
+plywood.btw.clustered <- coeftest(plywood.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.btw, plywood.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                  + GDP.per.capita..constant.2010.US..
+                  + Ores.and.metals.exports....of.merchandise.exports.
+                  + Ores.and.metals.imports....of.merchandise.imports.
+                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                  + Tariff.rate..applied..weighted.mean..all.products....
+                  + Tariff.rate..applied..weighted.mean..primary.products....
+                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                  + Average.Clustering.Coefficient...Trade
+                  + factor(Nation) + factor(Year), data = plywood)
+
+plywood.clo.clustered <- coeftest(plywood.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.clo, plywood.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                  + GDP.per.capita..constant.2010.US..
+                  + Ores.and.metals.exports....of.merchandise.exports.
+                  + Ores.and.metals.imports....of.merchandise.imports.
+                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                  + Tariff.rate..applied..weighted.mean..all.products....
+                  + Tariff.rate..applied..weighted.mean..primary.products....
+                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                  + Average.Clustering.Coefficient...Trade
+                  + factor(Nation) + factor(Year), data = plywood)
+
+plywood.eig.clustered <- coeftest(plywood.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.eig, plywood.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                  + GDP.per.capita..constant.2010.US..
+                  + Ores.and.metals.exports....of.merchandise.exports.
+                  + Ores.and.metals.imports....of.merchandise.imports.
+                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                  + Tariff.rate..applied..weighted.mean..all.products....
+                  + Tariff.rate..applied..weighted.mean..primary.products....
+                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                  + Average.Clustering.Coefficient...Trade
+                  + factor(Nation) + factor(Year), data = plywood)
+
+plywood.ind.clustered <- coeftest(plywood.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.ind, plywood.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                  + GDP.per.capita..constant.2010.US..
+                  + Ores.and.metals.exports....of.merchandise.exports.
+                  + Ores.and.metals.imports....of.merchandise.imports.
+                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                  + Tariff.rate..applied..weighted.mean..all.products....
+                  + Tariff.rate..applied..weighted.mean..primary.products....
+                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                  + Average.Clustering.Coefficient...Trade
+                  + factor(Nation) + factor(Year), data = plywood)
+
+plywood.oud.clustered <- coeftest(plywood.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.oud, plywood.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                  + GDP.per.capita..constant.2010.US..
+                  + Ores.and.metals.exports....of.merchandise.exports.
+                  + Ores.and.metals.imports....of.merchandise.imports.
+                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                  + Tariff.rate..applied..weighted.mean..all.products....
+                  + Tariff.rate..applied..weighted.mean..primary.products....
+                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                  + Average.Clustering.Coefficient...Trade
+                  + factor(Nation) + factor(Year), data = plywood)
+
+plywood.clu.clustered <- coeftest(plywood.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.clu, plywood.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Comp
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.btwC.clustered <- coeftest(plywood.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.btwC, plywood.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Comp
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.cloC.clustered <- coeftest(plywood.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.cloC, plywood.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Comp
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.eigC.clustered <- coeftest(plywood.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.eigC, plywood.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Comp
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.cluC.clustered <- coeftest(plywood.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.cluC, plywood.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Paper and paperboard
+
+paper.and.paperboard.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.btw.clustered <- coeftest(paper.and.paperboard.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.btw, paper.and.paperboard.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.clo.clustered <- coeftest(paper.and.paperboard.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.clo, paper.and.paperboard.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.eig.clustered <- coeftest(paper.and.paperboard.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.eig, paper.and.paperboard.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.ind.clustered <- coeftest(paper.and.paperboard.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.ind, paper.and.paperboard.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.oud.clustered <- coeftest(paper.and.paperboard.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.oud, paper.and.paperboard.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.clu.clustered <- coeftest(paper.and.paperboard.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.clu, paper.and.paperboard.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.btwC.clustered <- coeftest(paper.and.paperboard.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.btwC, paper.and.paperboard.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.cloC.clustered <- coeftest(paper.and.paperboard.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.cloC, paper.and.paperboard.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.eigC.clustered <- coeftest(paper.and.paperboard.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.eigC, paper.and.paperboard.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.cluC.clustered <- coeftest(paper.and.paperboard.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.cluC, paper.and.paperboard.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood non-coniferous non-tropical
+
+industrial.roundwood.non.coniferous.non.tropical.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                                                           + GDP.per.capita..constant.2010.US..
+                                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                           + Average.Clustering.Coefficient...Trade
+                                                           + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.btw.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.btw, industrial.roundwood.non.coniferous.non.tropical.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                                                           + GDP.per.capita..constant.2010.US..
+                                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                           + Average.Clustering.Coefficient...Trade
+                                                           + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.clo.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.clo, industrial.roundwood.non.coniferous.non.tropical.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                                                           + GDP.per.capita..constant.2010.US..
+                                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                           + Average.Clustering.Coefficient...Trade
+                                                           + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.eig.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.eig, industrial.roundwood.non.coniferous.non.tropical.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                                           + GDP.per.capita..constant.2010.US..
+                                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                           + Average.Clustering.Coefficient...Trade
+                                                           + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.ind.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.ind, industrial.roundwood.non.coniferous.non.tropical.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                                           + GDP.per.capita..constant.2010.US..
+                                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                           + Average.Clustering.Coefficient...Trade
+                                                           + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.oud.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.oud, industrial.roundwood.non.coniferous.non.tropical.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                                                           + GDP.per.capita..constant.2010.US..
+                                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                           + Average.Clustering.Coefficient...Trade
+                                                           + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.clu.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.clu, industrial.roundwood.non.coniferous.non.tropical.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Comp
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.btwC.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.btwC, industrial.roundwood.non.coniferous.non.tropical.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Comp
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.cloC.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.cloC, industrial.roundwood.non.coniferous.non.tropical.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Comp
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.eigC.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.eigC, industrial.roundwood.non.coniferous.non.tropical.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Comp
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.cluC.clustered <- coeftest(industrial.roundwood.non.coniferous.non.tropical.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.cluC, industrial.roundwood.non.coniferous.non.tropical.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Sawnwood - coniferous
+
+sawnwood.coniferous.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                              + GDP.per.capita..constant.2010.US..
+                              + Ores.and.metals.exports....of.merchandise.exports.
+                              + Ores.and.metals.imports....of.merchandise.imports.
+                              + Forest.area..sq..km. + Forest.area....of.land.area.
+                              + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                              + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                              + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                              + Real.interest.rate.... + Population..total + Population.growth..annual...
+                              + Tariff.rate..applied..weighted.mean..all.products....
+                              + Tariff.rate..applied..weighted.mean..primary.products....
+                              + Tariff.rate..applied..weighted.mean..manufactured.products....
+                              + Average.Clustering.Coefficient...Trade
+                              + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.btw.clustered <- coeftest(sawnwood.coniferous.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.btw, sawnwood.coniferous.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                              + GDP.per.capita..constant.2010.US..
+                              + Ores.and.metals.exports....of.merchandise.exports.
+                              + Ores.and.metals.imports....of.merchandise.imports.
+                              + Forest.area..sq..km. + Forest.area....of.land.area.
+                              + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                              + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                              + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                              + Real.interest.rate.... + Population..total + Population.growth..annual...
+                              + Tariff.rate..applied..weighted.mean..all.products....
+                              + Tariff.rate..applied..weighted.mean..primary.products....
+                              + Tariff.rate..applied..weighted.mean..manufactured.products....
+                              + Average.Clustering.Coefficient...Trade
+                              + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.clo.clustered <- coeftest(sawnwood.coniferous.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.clo, sawnwood.coniferous.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                              + GDP.per.capita..constant.2010.US..
+                              + Ores.and.metals.exports....of.merchandise.exports.
+                              + Ores.and.metals.imports....of.merchandise.imports.
+                              + Forest.area..sq..km. + Forest.area....of.land.area.
+                              + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                              + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                              + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                              + Real.interest.rate.... + Population..total + Population.growth..annual...
+                              + Tariff.rate..applied..weighted.mean..all.products....
+                              + Tariff.rate..applied..weighted.mean..primary.products....
+                              + Tariff.rate..applied..weighted.mean..manufactured.products....
+                              + Average.Clustering.Coefficient...Trade
+                              + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.eig.clustered <- coeftest(sawnwood.coniferous.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.eig, sawnwood.coniferous.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                              + GDP.per.capita..constant.2010.US..
+                              + Ores.and.metals.exports....of.merchandise.exports.
+                              + Ores.and.metals.imports....of.merchandise.imports.
+                              + Forest.area..sq..km. + Forest.area....of.land.area.
+                              + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                              + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                              + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                              + Real.interest.rate.... + Population..total + Population.growth..annual...
+                              + Tariff.rate..applied..weighted.mean..all.products....
+                              + Tariff.rate..applied..weighted.mean..primary.products....
+                              + Tariff.rate..applied..weighted.mean..manufactured.products....
+                              + Average.Clustering.Coefficient...Trade
+                              + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.ind.clustered <- coeftest(sawnwood.coniferous.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.ind, sawnwood.coniferous.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                              + GDP.per.capita..constant.2010.US..
+                              + Ores.and.metals.exports....of.merchandise.exports.
+                              + Ores.and.metals.imports....of.merchandise.imports.
+                              + Forest.area..sq..km. + Forest.area....of.land.area.
+                              + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                              + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                              + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                              + Real.interest.rate.... + Population..total + Population.growth..annual...
+                              + Tariff.rate..applied..weighted.mean..all.products....
+                              + Tariff.rate..applied..weighted.mean..primary.products....
+                              + Tariff.rate..applied..weighted.mean..manufactured.products....
+                              + Average.Clustering.Coefficient...Trade
+                              + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.oud.clustered <- coeftest(sawnwood.coniferous.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.oud, sawnwood.coniferous.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                              + GDP.per.capita..constant.2010.US..
+                              + Ores.and.metals.exports....of.merchandise.exports.
+                              + Ores.and.metals.imports....of.merchandise.imports.
+                              + Forest.area..sq..km. + Forest.area....of.land.area.
+                              + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                              + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                              + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                              + Real.interest.rate.... + Population..total + Population.growth..annual...
+                              + Tariff.rate..applied..weighted.mean..all.products....
+                              + Tariff.rate..applied..weighted.mean..primary.products....
+                              + Tariff.rate..applied..weighted.mean..manufactured.products....
+                              + Average.Clustering.Coefficient...Trade
+                              + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.clu.clustered <- coeftest(sawnwood.coniferous.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.clu, sawnwood.coniferous.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Comp
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.btwC.clustered <- coeftest(sawnwood.coniferous.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.btwC, sawnwood.coniferous.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Comp
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.cloC.clustered <- coeftest(sawnwood.coniferous.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.cloC, sawnwood.coniferous.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Comp
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.eigC.clustered <- coeftest(sawnwood.coniferous.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.eigC, sawnwood.coniferous.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Comp
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.cluC.clustered <- coeftest(sawnwood.coniferous.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.cluC, sawnwood.coniferous.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Veneer sheets
+
+veneer.sheets.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                        + GDP.per.capita..constant.2010.US..
+                        + Ores.and.metals.exports....of.merchandise.exports.
+                        + Ores.and.metals.imports....of.merchandise.imports.
+                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                        + Tariff.rate..applied..weighted.mean..all.products....
+                        + Tariff.rate..applied..weighted.mean..primary.products....
+                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                        + Average.Clustering.Coefficient...Trade
+                        + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.btw.clustered <- coeftest(veneer.sheets.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.btw, veneer.sheets.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                        + GDP.per.capita..constant.2010.US..
+                        + Ores.and.metals.exports....of.merchandise.exports.
+                        + Ores.and.metals.imports....of.merchandise.imports.
+                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                        + Tariff.rate..applied..weighted.mean..all.products....
+                        + Tariff.rate..applied..weighted.mean..primary.products....
+                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                        + Average.Clustering.Coefficient...Trade
+                        + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.clo.clustered <- coeftest(veneer.sheets.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.clo, veneer.sheets.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                        + GDP.per.capita..constant.2010.US..
+                        + Ores.and.metals.exports....of.merchandise.exports.
+                        + Ores.and.metals.imports....of.merchandise.imports.
+                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                        + Tariff.rate..applied..weighted.mean..all.products....
+                        + Tariff.rate..applied..weighted.mean..primary.products....
+                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                        + Average.Clustering.Coefficient...Trade
+                        + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.eig.clustered <- coeftest(veneer.sheets.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.eig, veneer.sheets.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                        + GDP.per.capita..constant.2010.US..
+                        + Ores.and.metals.exports....of.merchandise.exports.
+                        + Ores.and.metals.imports....of.merchandise.imports.
+                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                        + Tariff.rate..applied..weighted.mean..all.products....
+                        + Tariff.rate..applied..weighted.mean..primary.products....
+                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                        + Average.Clustering.Coefficient...Trade
+                        + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.ind.clustered <- coeftest(veneer.sheets.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.ind, veneer.sheets.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                        + GDP.per.capita..constant.2010.US..
+                        + Ores.and.metals.exports....of.merchandise.exports.
+                        + Ores.and.metals.imports....of.merchandise.imports.
+                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                        + Tariff.rate..applied..weighted.mean..all.products....
+                        + Tariff.rate..applied..weighted.mean..primary.products....
+                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                        + Average.Clustering.Coefficient...Trade
+                        + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.oud.clustered <- coeftest(veneer.sheets.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.oud, veneer.sheets.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                        + GDP.per.capita..constant.2010.US..
+                        + Ores.and.metals.exports....of.merchandise.exports.
+                        + Ores.and.metals.imports....of.merchandise.imports.
+                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                        + Tariff.rate..applied..weighted.mean..all.products....
+                        + Tariff.rate..applied..weighted.mean..primary.products....
+                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                        + Average.Clustering.Coefficient...Trade
+                        + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.clu.clustered <- coeftest(veneer.sheets.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.clu, veneer.sheets.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Comp
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.btwC.clustered <- coeftest(veneer.sheets.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.btwC, veneer.sheets.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Comp
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.cloC.clustered <- coeftest(veneer.sheets.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.cloC, veneer.sheets.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Comp
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.eigC.clustered <- coeftest(veneer.sheets.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.eigC, veneer.sheets.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Comp
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.cluC.clustered <- coeftest(veneer.sheets.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.cluC, veneer.sheets.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Newsprint
+
+newsprint.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.btw.clustered <- coeftest(newsprint.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.btw, newsprint.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.clo.clustered <- coeftest(newsprint.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.clo, newsprint.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.eig.clustered <- coeftest(newsprint.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.eig, newsprint.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.ind.clustered <- coeftest(newsprint.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.ind, newsprint.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.oud.clustered <- coeftest(newsprint.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.oud, newsprint.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.clu.clustered <- coeftest(newsprint.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.clu, newsprint.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.btwC.clustered <- coeftest(newsprint.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.btwC, newsprint.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.cloC.clustered <- coeftest(newsprint.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.cloC, newsprint.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.eigC.clustered <- coeftest(newsprint.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.eigC, newsprint.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.cluC.clustered <- coeftest(newsprint.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.cluC, newsprint.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Fibreboard
+
+fibreboard.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.btw.clustered <- coeftest(fibreboard.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.btw, fibreboard.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.clo.clustered <- coeftest(fibreboard.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.clo, fibreboard.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.eig.clustered <- coeftest(fibreboard.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.eig, fibreboard.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.ind.clustered <- coeftest(fibreboard.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.ind, fibreboard.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.oud.clustered <- coeftest(fibreboard.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.oud, fibreboard.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.clu.clustered <- coeftest(fibreboard.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.clu, fibreboard.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.btwC.clustered <- coeftest(fibreboard.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.btwC, fibreboard.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.cloC.clustered <- coeftest(fibreboard.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.cloC, fibreboard.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.eigC.clustered <- coeftest(fibreboard.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.eigC, fibreboard.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.cluC.clustered <- coeftest(fibreboard.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.cluC, fibreboard.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood - coniferous
+
+industrial.roundwood.coniferous.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                                          + GDP.per.capita..constant.2010.US..
+                                          + Ores.and.metals.exports....of.merchandise.exports.
+                                          + Ores.and.metals.imports....of.merchandise.imports.
+                                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                          + Tariff.rate..applied..weighted.mean..all.products....
+                                          + Tariff.rate..applied..weighted.mean..primary.products....
+                                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                          + Average.Clustering.Coefficient...Trade
+                                          + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.btw.clustered <- coeftest(industrial.roundwood.coniferous.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.btw, industrial.roundwood.coniferous.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                                          + GDP.per.capita..constant.2010.US..
+                                          + Ores.and.metals.exports....of.merchandise.exports.
+                                          + Ores.and.metals.imports....of.merchandise.imports.
+                                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                          + Tariff.rate..applied..weighted.mean..all.products....
+                                          + Tariff.rate..applied..weighted.mean..primary.products....
+                                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                          + Average.Clustering.Coefficient...Trade
+                                          + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.clo.clustered <- coeftest(industrial.roundwood.coniferous.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.clo, industrial.roundwood.coniferous.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                                          + GDP.per.capita..constant.2010.US..
+                                          + Ores.and.metals.exports....of.merchandise.exports.
+                                          + Ores.and.metals.imports....of.merchandise.imports.
+                                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                          + Tariff.rate..applied..weighted.mean..all.products....
+                                          + Tariff.rate..applied..weighted.mean..primary.products....
+                                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                          + Average.Clustering.Coefficient...Trade
+                                          + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.eig.clustered <- coeftest(industrial.roundwood.coniferous.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.eig, industrial.roundwood.coniferous.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                          + GDP.per.capita..constant.2010.US..
+                                          + Ores.and.metals.exports....of.merchandise.exports.
+                                          + Ores.and.metals.imports....of.merchandise.imports.
+                                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                          + Tariff.rate..applied..weighted.mean..all.products....
+                                          + Tariff.rate..applied..weighted.mean..primary.products....
+                                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                          + Average.Clustering.Coefficient...Trade
+                                          + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.ind.clustered <- coeftest(industrial.roundwood.coniferous.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.ind, industrial.roundwood.coniferous.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                          + GDP.per.capita..constant.2010.US..
+                                          + Ores.and.metals.exports....of.merchandise.exports.
+                                          + Ores.and.metals.imports....of.merchandise.imports.
+                                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                          + Tariff.rate..applied..weighted.mean..all.products....
+                                          + Tariff.rate..applied..weighted.mean..primary.products....
+                                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                          + Average.Clustering.Coefficient...Trade
+                                          + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.oud.clustered <- coeftest(industrial.roundwood.coniferous.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.oud, industrial.roundwood.coniferous.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                                          + GDP.per.capita..constant.2010.US..
+                                          + Ores.and.metals.exports....of.merchandise.exports.
+                                          + Ores.and.metals.imports....of.merchandise.imports.
+                                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                          + Tariff.rate..applied..weighted.mean..all.products....
+                                          + Tariff.rate..applied..weighted.mean..primary.products....
+                                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                          + Average.Clustering.Coefficient...Trade
+                                          + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.clu.clustered <- coeftest(industrial.roundwood.coniferous.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.clu, industrial.roundwood.coniferous.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Comp
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.btwC.clustered <- coeftest(industrial.roundwood.coniferous.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.btwC, industrial.roundwood.coniferous.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Comp
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.cloC.clustered <- coeftest(industrial.roundwood.coniferous.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.cloC, industrial.roundwood.coniferous.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Comp
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.eigC.clustered <- coeftest(industrial.roundwood.coniferous.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.eigC, industrial.roundwood.coniferous.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Comp
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.cluC.clustered <- coeftest(industrial.roundwood.coniferous.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.cluC, industrial.roundwood.coniferous.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Sawnwood - non-coniferous
+
+sawnwood.non.coniferous.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                                  + GDP.per.capita..constant.2010.US..
+                                  + Ores.and.metals.exports....of.merchandise.exports.
+                                  + Ores.and.metals.imports....of.merchandise.imports.
+                                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                  + Tariff.rate..applied..weighted.mean..all.products....
+                                  + Tariff.rate..applied..weighted.mean..primary.products....
+                                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                  + Average.Clustering.Coefficient...Trade
+                                  + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.btw.clustered <- coeftest(sawnwood.non.coniferous.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.btw, sawnwood.non.coniferous.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                                  + GDP.per.capita..constant.2010.US..
+                                  + Ores.and.metals.exports....of.merchandise.exports.
+                                  + Ores.and.metals.imports....of.merchandise.imports.
+                                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                  + Tariff.rate..applied..weighted.mean..all.products....
+                                  + Tariff.rate..applied..weighted.mean..primary.products....
+                                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                  + Average.Clustering.Coefficient...Trade
+                                  + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.clo.clustered <- coeftest(sawnwood.non.coniferous.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.clo, sawnwood.non.coniferous.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                                  + GDP.per.capita..constant.2010.US..
+                                  + Ores.and.metals.exports....of.merchandise.exports.
+                                  + Ores.and.metals.imports....of.merchandise.imports.
+                                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                  + Tariff.rate..applied..weighted.mean..all.products....
+                                  + Tariff.rate..applied..weighted.mean..primary.products....
+                                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                  + Average.Clustering.Coefficient...Trade
+                                  + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.eig.clustered <- coeftest(sawnwood.non.coniferous.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.eig, sawnwood.non.coniferous.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                  + GDP.per.capita..constant.2010.US..
+                                  + Ores.and.metals.exports....of.merchandise.exports.
+                                  + Ores.and.metals.imports....of.merchandise.imports.
+                                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                  + Tariff.rate..applied..weighted.mean..all.products....
+                                  + Tariff.rate..applied..weighted.mean..primary.products....
+                                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                  + Average.Clustering.Coefficient...Trade
+                                  + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.ind.clustered <- coeftest(sawnwood.non.coniferous.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.ind, sawnwood.non.coniferous.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                  + GDP.per.capita..constant.2010.US..
+                                  + Ores.and.metals.exports....of.merchandise.exports.
+                                  + Ores.and.metals.imports....of.merchandise.imports.
+                                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                  + Tariff.rate..applied..weighted.mean..all.products....
+                                  + Tariff.rate..applied..weighted.mean..primary.products....
+                                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                  + Average.Clustering.Coefficient...Trade
+                                  + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.oud.clustered <- coeftest(sawnwood.non.coniferous.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.oud, sawnwood.non.coniferous.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                                  + GDP.per.capita..constant.2010.US..
+                                  + Ores.and.metals.exports....of.merchandise.exports.
+                                  + Ores.and.metals.imports....of.merchandise.imports.
+                                  + Forest.area..sq..km. + Forest.area....of.land.area.
+                                  + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                  + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                  + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                  + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                  + Tariff.rate..applied..weighted.mean..all.products....
+                                  + Tariff.rate..applied..weighted.mean..primary.products....
+                                  + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                  + Average.Clustering.Coefficient...Trade
+                                  + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.clu.clustered <- coeftest(sawnwood.non.coniferous.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.clu, sawnwood.non.coniferous.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Comp
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.btwC.clustered <- coeftest(sawnwood.non.coniferous.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.btwC, sawnwood.non.coniferous.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Comp
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.cloC.clustered <- coeftest(sawnwood.non.coniferous.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.cloC, sawnwood.non.coniferous.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Comp
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.eigC.clustered <- coeftest(sawnwood.non.coniferous.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.eigC, sawnwood.non.coniferous.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Comp
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.cluC.clustered <- coeftest(sawnwood.non.coniferous.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.cluC, sawnwood.non.coniferous.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Wood pulp
+
+wood.pulp.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.btw.clustered <- coeftest(wood.pulp.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.btw, wood.pulp.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.clo.clustered <- coeftest(wood.pulp.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.clo, wood.pulp.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.eig.clustered <- coeftest(wood.pulp.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.eig, wood.pulp.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.ind.clustered <- coeftest(wood.pulp.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.ind, wood.pulp.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.oud.clustered <- coeftest(wood.pulp.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.oud, wood.pulp.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Trade
+                    + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.clu.clustered <- coeftest(wood.pulp.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.clu, wood.pulp.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.btwC.clustered <- coeftest(wood.pulp.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.btwC, wood.pulp.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.cloC.clustered <- coeftest(wood.pulp.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.cloC, wood.pulp.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.eigC.clustered <- coeftest(wood.pulp.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.eigC, wood.pulp.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Comp
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.cluC.clustered <- coeftest(wood.pulp.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.cluC, wood.pulp.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood non-coniferous tropical
+
+industrial.roundwood.non.coniferous.tropical.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                                                       + GDP.per.capita..constant.2010.US..
+                                                       + Ores.and.metals.exports....of.merchandise.exports.
+                                                       + Ores.and.metals.imports....of.merchandise.imports.
+                                                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                       + Tariff.rate..applied..weighted.mean..all.products....
+                                                       + Tariff.rate..applied..weighted.mean..primary.products....
+                                                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                       + Average.Clustering.Coefficient...Trade
+                                                       + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.btw.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.btw, industrial.roundwood.non.coniferous.tropical.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                                                       + GDP.per.capita..constant.2010.US..
+                                                       + Ores.and.metals.exports....of.merchandise.exports.
+                                                       + Ores.and.metals.imports....of.merchandise.imports.
+                                                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                       + Tariff.rate..applied..weighted.mean..all.products....
+                                                       + Tariff.rate..applied..weighted.mean..primary.products....
+                                                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                       + Average.Clustering.Coefficient...Trade
+                                                       + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.clo.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.clo, industrial.roundwood.non.coniferous.tropical.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                                                       + GDP.per.capita..constant.2010.US..
+                                                       + Ores.and.metals.exports....of.merchandise.exports.
+                                                       + Ores.and.metals.imports....of.merchandise.imports.
+                                                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                       + Tariff.rate..applied..weighted.mean..all.products....
+                                                       + Tariff.rate..applied..weighted.mean..primary.products....
+                                                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                       + Average.Clustering.Coefficient...Trade
+                                                       + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.eig.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.eig, industrial.roundwood.non.coniferous.tropical.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                                       + GDP.per.capita..constant.2010.US..
+                                                       + Ores.and.metals.exports....of.merchandise.exports.
+                                                       + Ores.and.metals.imports....of.merchandise.imports.
+                                                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                       + Tariff.rate..applied..weighted.mean..all.products....
+                                                       + Tariff.rate..applied..weighted.mean..primary.products....
+                                                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                       + Average.Clustering.Coefficient...Trade
+                                                       + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.ind.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.ind, industrial.roundwood.non.coniferous.tropical.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                                       + GDP.per.capita..constant.2010.US..
+                                                       + Ores.and.metals.exports....of.merchandise.exports.
+                                                       + Ores.and.metals.imports....of.merchandise.imports.
+                                                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                       + Tariff.rate..applied..weighted.mean..all.products....
+                                                       + Tariff.rate..applied..weighted.mean..primary.products....
+                                                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                       + Average.Clustering.Coefficient...Trade
+                                                       + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.oud.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.oud, industrial.roundwood.non.coniferous.tropical.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                                                       + GDP.per.capita..constant.2010.US..
+                                                       + Ores.and.metals.exports....of.merchandise.exports.
+                                                       + Ores.and.metals.imports....of.merchandise.imports.
+                                                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                       + Tariff.rate..applied..weighted.mean..all.products....
+                                                       + Tariff.rate..applied..weighted.mean..primary.products....
+                                                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                       + Average.Clustering.Coefficient...Trade
+                                                       + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.clu.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.clu, industrial.roundwood.non.coniferous.tropical.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Comp
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.btwC.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.btwC, industrial.roundwood.non.coniferous.tropical.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Comp
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.cloC.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.cloC, industrial.roundwood.non.coniferous.tropical.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Comp
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.eigC.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.eigC, industrial.roundwood.non.coniferous.tropical.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Comp
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.cluC.clustered <- coeftest(industrial.roundwood.non.coniferous.tropical.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.cluC, industrial.roundwood.non.coniferous.tropical.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# Wood chips and particles
+
+wood.chips.and.particles.btw <- lm(Betweenness.Centrality...Trade ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.btw.clustered <- coeftest(wood.chips.and.particles.btw, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.btw, wood.chips.and.particles.btw.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.clo <- lm(Closeness.Centrality...Trade ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.clo.clustered <- coeftest(wood.chips.and.particles.clo, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.clo, wood.chips.and.particles.clo.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.eig <- lm(Eigenvector.Centrality...Trade ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.eig.clustered <- coeftest(wood.chips.and.particles.eig, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.eig, wood.chips.and.particles.eig.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.ind <- lm(In.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.ind.clustered <- coeftest(wood.chips.and.particles.ind, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.ind, wood.chips.and.particles.ind.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.oud <- lm(Out.Degree.Centrality...Trade ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.oud.clustered <- coeftest(wood.chips.and.particles.oud, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.oud, wood.chips.and.particles.oud.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.clu <- lm(Clustering.Coefficient...Trade ~ KP*Post + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.clu.clustered <- coeftest(wood.chips.and.particles.clu, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.clu, wood.chips.and.particles.clu.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.btwC <- lm(Betweenness.Centrality...Competition ~ KP*Post + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.btwC.clustered <- coeftest(wood.chips.and.particles.btwC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.btwC, wood.chips.and.particles.btwC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.cloC <- lm(Closeness.Centrality...Competition ~ KP*Post + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.cloC.clustered <- coeftest(wood.chips.and.particles.cloC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.cloC, wood.chips.and.particles.cloC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.eigC <- lm(Eigenvector.Centrality...Competition ~ KP*Post + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.eigC.clustered <- coeftest(wood.chips.and.particles.eigC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.eigC, wood.chips.and.particles.eigC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.cluC <- lm(Clustering.Coefficient...Competition ~ KP*Post + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.cluC.clustered <- coeftest(wood.chips.and.particles.cluC, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.cluC, wood.chips.and.particles.cluC.clustered, type = 'text', omit = c('Nation', 'Year'))
+
+# KP variable with a 1 year lead
+
+# Trade Data
+
+trade.data.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.btw.clustered1 <- coeftest(trade.data.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.btw1, trade.data.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.clo.clustered1 <- coeftest(trade.data.clo1, vcov = vcovCL, cluster = ~Nation)
+
+
+trade.data.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.eig.clustered1 <- coeftest(trade.data.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.eig1, trade.data.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.ind.clustered1 <- coeftest(trade.data.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.ind1, trade.data.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.oud.clustered1 <- coeftest(trade.data.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.oud1, trade.data.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.clu.clustered1 <- coeftest(trade.data.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.clu1, trade.data.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.btwC.clustered1 <- coeftest(trade.data.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.btwC1, trade.data.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.cloC.clustered1 <- coeftest(trade.data.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.cloC1, trade.data.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.eigC.clustered1 <- coeftest(trade.data.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.eigC1, trade.data.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.cluC.clustered1 <- coeftest(trade.data.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.cluC1, trade.data.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Plywood
+
+plywood.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.btw.clustered1 <- coeftest(plywood.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.btw1, plywood.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.clo.clustered1 <- coeftest(plywood.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.clo1, plywood.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.eig.clustered1 <- coeftest(plywood.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.eig1, plywood.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.ind.clustered1 <- coeftest(plywood.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.ind1, plywood.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.oud.clustered1 <- coeftest(plywood.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.oud1, plywood.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.clu.clustered1 <- coeftest(plywood.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.clu1, plywood.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.btwC.clustered1 <- coeftest(plywood.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.btwC1, plywood.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.cloC.clustered1 <- coeftest(plywood.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.cloC1, plywood.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.eigC.clustered1 <- coeftest(plywood.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.eigC1, plywood.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.cluC.clustered1 <- coeftest(plywood.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.cluC1, plywood.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Paper and paperboard
+
+paper.and.paperboard.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.btw.clustered1 <- coeftest(paper.and.paperboard.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.btw1, paper.and.paperboard.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.clo.clustered1 <- coeftest(paper.and.paperboard.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.clo1, paper.and.paperboard.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.eig.clustered1 <- coeftest(paper.and.paperboard.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.eig1, paper.and.paperboard.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.ind.clustered1 <- coeftest(paper.and.paperboard.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.ind1, paper.and.paperboard.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.oud.clustered1 <- coeftest(paper.and.paperboard.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.oud1, paper.and.paperboard.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.clu.clustered1 <- coeftest(paper.and.paperboard.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.clu1, paper.and.paperboard.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.btwC.clustered1 <- coeftest(paper.and.paperboard.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.btwC1, paper.and.paperboard.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.cloC.clustered1 <- coeftest(paper.and.paperboard.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.cloC1, paper.and.paperboard.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.eigC.clustered1 <- coeftest(paper.and.paperboard.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.eigC1, paper.and.paperboard.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.cluC.clustered1 <- coeftest(paper.and.paperboard.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.cluC1, paper.and.paperboard.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood non-coniferous non-tropical
+
+industrial.roundwood.non.coniferous.non.tropical.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.btw.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.btw1, industrial.roundwood.non.coniferous.non.tropical.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.clo.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.clo1, industrial.roundwood.non.coniferous.non.tropical.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.eig.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.eig1, industrial.roundwood.non.coniferous.non.tropical.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.ind.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.ind1, industrial.roundwood.non.coniferous.non.tropical.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.oud.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.oud1, industrial.roundwood.non.coniferous.non.tropical.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.clu.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.clu1, industrial.roundwood.non.coniferous.non.tropical.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.btwC.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.btwC1, industrial.roundwood.non.coniferous.non.tropical.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.cloC.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.cloC1, industrial.roundwood.non.coniferous.non.tropical.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.eigC.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.eigC1, industrial.roundwood.non.coniferous.non.tropical.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.cluC.clustered1 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.cluC1, industrial.roundwood.non.coniferous.non.tropical.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Sawnwood - coniferous
+
+sawnwood.coniferous.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.btw.clustered1 <- coeftest(sawnwood.coniferous.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.btw1, sawnwood.coniferous.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.clo.clustered1 <- coeftest(sawnwood.coniferous.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.clo1, sawnwood.coniferous.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.eig.clustered1 <- coeftest(sawnwood.coniferous.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.eig1, sawnwood.coniferous.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.ind.clustered1 <- coeftest(sawnwood.coniferous.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.ind1, sawnwood.coniferous.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.oud.clustered1 <- coeftest(sawnwood.coniferous.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.oud1, sawnwood.coniferous.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.clu.clustered1 <- coeftest(sawnwood.coniferous.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.clu1, sawnwood.coniferous.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.btwC.clustered1 <- coeftest(sawnwood.coniferous.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.btwC1, sawnwood.coniferous.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.cloC.clustered1 <- coeftest(sawnwood.coniferous.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.cloC1, sawnwood.coniferous.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.eigC.clustered1 <- coeftest(sawnwood.coniferous.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.eigC1, sawnwood.coniferous.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.cluC.clustered1 <- coeftest(sawnwood.coniferous.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.cluC1, sawnwood.coniferous.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Veneer sheets
+
+veneer.sheets.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.btw.clustered1 <- coeftest(veneer.sheets.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.btw1, veneer.sheets.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.clo.clustered1 <- coeftest(veneer.sheets.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.clo1, veneer.sheets.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.eig.clustered1 <- coeftest(veneer.sheets.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.eig1, veneer.sheets.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.ind.clustered1 <- coeftest(veneer.sheets.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.ind1, veneer.sheets.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.oud.clustered1 <- coeftest(veneer.sheets.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.oud1, veneer.sheets.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.clu.clustered1 <- coeftest(veneer.sheets.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.clu1, veneer.sheets.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.btwC.clustered1 <- coeftest(veneer.sheets.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.btwC1, veneer.sheets.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.cloC.clustered1 <- coeftest(veneer.sheets.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.cloC1, veneer.sheets.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.eigC.clustered1 <- coeftest(veneer.sheets.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.eigC1, veneer.sheets.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.cluC.clustered1 <- coeftest(veneer.sheets.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.cluC1, veneer.sheets.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Newsprint
+
+newsprint.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.btw.clustered1 <- coeftest(newsprint.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.btw1, newsprint.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.clo.clustered1 <- coeftest(newsprint.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.clo1, newsprint.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.eig.clustered1 <- coeftest(newsprint.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.eig1, newsprint.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.ind.clustered1 <- coeftest(newsprint.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.ind1, newsprint.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.oud.clustered1 <- coeftest(newsprint.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.oud1, newsprint.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.clu.clustered1 <- coeftest(newsprint.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.clu1, newsprint.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.btwC.clustered1 <- coeftest(newsprint.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.btwC1, newsprint.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.cloC.clustered1 <- coeftest(newsprint.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.cloC1, newsprint.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.eigC.clustered1 <- coeftest(newsprint.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.eigC1, newsprint.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.cluC.clustered1 <- coeftest(newsprint.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.cluC1, newsprint.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Fibreboard
+
+fibreboard.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.btw.clustered1 <- coeftest(fibreboard.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.btw1, fibreboard.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.clo.clustered1 <- coeftest(fibreboard.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.clo1, fibreboard.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.eig.clustered1 <- coeftest(fibreboard.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.eig1, fibreboard.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.ind.clustered1 <- coeftest(fibreboard.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.ind1, fibreboard.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.oud.clustered1 <- coeftest(fibreboard.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.oud1, fibreboard.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.clu.clustered1 <- coeftest(fibreboard.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.clu1, fibreboard.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.btwC.clustered1 <- coeftest(fibreboard.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.btwC1, fibreboard.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.cloC.clustered1 <- coeftest(fibreboard.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.cloC1, fibreboard.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.eigC.clustered1 <- coeftest(fibreboard.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.eigC1, fibreboard.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.cluC.clustered1 <- coeftest(fibreboard.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.cluC1, fibreboard.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood - coniferous
+
+industrial.roundwood.coniferous.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.btw.clustered1 <- coeftest(industrial.roundwood.coniferous.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.btw1, industrial.roundwood.coniferous.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.clo.clustered1 <- coeftest(industrial.roundwood.coniferous.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.clo1, industrial.roundwood.coniferous.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.eig.clustered1 <- coeftest(industrial.roundwood.coniferous.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.eig1, industrial.roundwood.coniferous.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.ind.clustered1 <- coeftest(industrial.roundwood.coniferous.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.ind1, industrial.roundwood.coniferous.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.oud.clustered1 <- coeftest(industrial.roundwood.coniferous.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.oud1, industrial.roundwood.coniferous.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.clu.clustered1 <- coeftest(industrial.roundwood.coniferous.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.clu1, industrial.roundwood.coniferous.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.btwC.clustered1 <- coeftest(industrial.roundwood.coniferous.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.btwC1, industrial.roundwood.coniferous.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.cloC.clustered1 <- coeftest(industrial.roundwood.coniferous.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.cloC1, industrial.roundwood.coniferous.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.eigC.clustered1 <- coeftest(industrial.roundwood.coniferous.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.eigC1, industrial.roundwood.coniferous.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.cluC.clustered1 <- coeftest(industrial.roundwood.coniferous.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.cluC1, industrial.roundwood.coniferous.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Sawnwood - non-coniferous
+
+sawnwood.non.coniferous.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.btw.clustered1 <- coeftest(sawnwood.non.coniferous.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.btw1, sawnwood.non.coniferous.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.clo.clustered1 <- coeftest(sawnwood.non.coniferous.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.clo1, sawnwood.non.coniferous.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.eig.clustered1 <- coeftest(sawnwood.non.coniferous.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.eig1, sawnwood.non.coniferous.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.ind.clustered1 <- coeftest(sawnwood.non.coniferous.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.ind1, sawnwood.non.coniferous.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.oud.clustered1 <- coeftest(sawnwood.non.coniferous.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.oud1, sawnwood.non.coniferous.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.clu.clustered1 <- coeftest(sawnwood.non.coniferous.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.clu1, sawnwood.non.coniferous.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.btwC.clustered1 <- coeftest(sawnwood.non.coniferous.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.btwC1, sawnwood.non.coniferous.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.cloC.clustered1 <- coeftest(sawnwood.non.coniferous.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.cloC1, sawnwood.non.coniferous.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.eigC.clustered1 <- coeftest(sawnwood.non.coniferous.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.eigC1, sawnwood.non.coniferous.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.cluC.clustered1 <- coeftest(sawnwood.non.coniferous.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.cluC1, sawnwood.non.coniferous.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Wood pulp
+
+wood.pulp.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.btw.clustered1 <- coeftest(wood.pulp.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.btw1, wood.pulp.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.clo.clustered1 <- coeftest(wood.pulp.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.clo1, wood.pulp.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.eig.clustered1 <- coeftest(wood.pulp.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.eig1, wood.pulp.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.ind.clustered1 <- coeftest(wood.pulp.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.ind1, wood.pulp.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.oud.clustered1 <- coeftest(wood.pulp.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.oud1, wood.pulp.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.clu.clustered1 <- coeftest(wood.pulp.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.clu1, wood.pulp.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.btwC.clustered1 <- coeftest(wood.pulp.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.btwC1, wood.pulp.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.cloC.clustered1 <- coeftest(wood.pulp.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.cloC1, wood.pulp.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.eigC.clustered1 <- coeftest(wood.pulp.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.eigC1, wood.pulp.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.cluC.clustered1 <- coeftest(wood.pulp.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.cluC1, wood.pulp.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood non-coniferous tropical
+
+industrial.roundwood.non.coniferous.tropical.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.btw.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.btw1, industrial.roundwood.non.coniferous.tropical.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.clo.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.clo1, industrial.roundwood.non.coniferous.tropical.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.eig.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.eig1, industrial.roundwood.non.coniferous.tropical.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.ind.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.ind1, industrial.roundwood.non.coniferous.tropical.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.oud.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.oud1, industrial.roundwood.non.coniferous.tropical.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.clu.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.clu1, industrial.roundwood.non.coniferous.tropical.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.btwC.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.btwC1, industrial.roundwood.non.coniferous.tropical.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.cloC.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.cloC1, industrial.roundwood.non.coniferous.tropical.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.eigC.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.eigC1, industrial.roundwood.non.coniferous.tropical.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.cluC.clustered1 <- coeftest(industrial.roundwood.non.coniferous.tropical.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.cluC1, industrial.roundwood.non.coniferous.tropical.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# Wood chips and particles
+
+wood.chips.and.particles.btw1 <- lm(Betweenness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.btw.clustered1 <- coeftest(wood.chips.and.particles.btw1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.btw1, wood.chips.and.particles.btw.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.clo1 <- lm(Closeness.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.clo.clustered1 <- coeftest(wood.chips.and.particles.clo1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.clo1, wood.chips.and.particles.clo.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.eig1 <- lm(Eigenvector.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.eig.clustered1 <- coeftest(wood.chips.and.particles.eig1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.eig1, wood.chips.and.particles.eig.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.ind1 <- lm(In.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.ind.clustered1 <- coeftest(wood.chips.and.particles.ind1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.ind1, wood.chips.and.particles.ind.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.oud1 <- lm(Out.Degree.Centrality...Trade ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.oud.clustered1 <- coeftest(wood.chips.and.particles.oud1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.oud1, wood.chips.and.particles.oud.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.clu1 <- lm(Clustering.Coefficient...Trade ~ KP*Post1 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.clu.clustered1 <- coeftest(wood.chips.and.particles.clu1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.clu1, wood.chips.and.particles.clu.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.btwC1 <- lm(Betweenness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.btwC.clustered1 <- coeftest(wood.chips.and.particles.btwC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.btwC1, wood.chips.and.particles.btwC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.cloC1 <- lm(Closeness.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.cloC.clustered1 <- coeftest(wood.chips.and.particles.cloC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.cloC1, wood.chips.and.particles.cloC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.eigC1 <- lm(Eigenvector.Centrality...Competition ~ KP*Post1 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.eigC.clustered1 <- coeftest(wood.chips.and.particles.eigC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.eigC1, wood.chips.and.particles.eigC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.cluC1 <- lm(Clustering.Coefficient...Competition ~ KP*Post1 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.cluC.clustered1 <- coeftest(wood.chips.and.particles.cluC1, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.cluC1, wood.chips.and.particles.cluC.clustered1, type = 'text', omit = c('Nation', 'Year'))
+
+# KP variable with a 2 year lead
+
+# Trade Data
+
+trade.data.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.btw.clustered2 <- coeftest(trade.data.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.btw2, trade.data.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.clo.clustered2 <- coeftest(trade.data.clo2, vcov = vcovCL, cluster = ~Nation)
+
+
+trade.data.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.eig.clustered2 <- coeftest(trade.data.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.eig2, trade.data.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.ind.clustered2 <- coeftest(trade.data.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.ind2, trade.data.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.oud.clustered2 <- coeftest(trade.data.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.oud2, trade.data.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.clu.clustered2 <- coeftest(trade.data.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.clu2, trade.data.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.btwC.clustered2 <- coeftest(trade.data.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.btwC2, trade.data.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.cloC.clustered2 <- coeftest(trade.data.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.cloC2, trade.data.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.eigC.clustered2 <- coeftest(trade.data.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.eigC2, trade.data.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.cluC.clustered2 <- coeftest(trade.data.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.cluC2, trade.data.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Plywood
+
+plywood.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.btw.clustered2 <- coeftest(plywood.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.btw2, plywood.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.clo.clustered2 <- coeftest(plywood.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.clo2, plywood.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.eig.clustered2 <- coeftest(plywood.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.eig2, plywood.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.ind.clustered2 <- coeftest(plywood.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.ind2, plywood.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.oud.clustered2 <- coeftest(plywood.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.oud2, plywood.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.clu.clustered2 <- coeftest(plywood.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.clu2, plywood.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.btwC.clustered2 <- coeftest(plywood.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.btwC2, plywood.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.cloC.clustered2 <- coeftest(plywood.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.cloC2, plywood.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.eigC.clustered2 <- coeftest(plywood.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.eigC2, plywood.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.cluC.clustered2 <- coeftest(plywood.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.cluC2, plywood.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Paper and paperboard
+
+paper.and.paperboard.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.btw.clustered2 <- coeftest(paper.and.paperboard.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.btw2, paper.and.paperboard.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.clo.clustered2 <- coeftest(paper.and.paperboard.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.clo2, paper.and.paperboard.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.eig.clustered2 <- coeftest(paper.and.paperboard.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.eig2, paper.and.paperboard.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.ind.clustered2 <- coeftest(paper.and.paperboard.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.ind2, paper.and.paperboard.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.oud.clustered2 <- coeftest(paper.and.paperboard.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.oud2, paper.and.paperboard.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.clu.clustered2 <- coeftest(paper.and.paperboard.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.clu2, paper.and.paperboard.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.btwC.clustered2 <- coeftest(paper.and.paperboard.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.btwC2, paper.and.paperboard.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.cloC.clustered2 <- coeftest(paper.and.paperboard.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.cloC2, paper.and.paperboard.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.eigC.clustered2 <- coeftest(paper.and.paperboard.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.eigC2, paper.and.paperboard.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.cluC.clustered2 <- coeftest(paper.and.paperboard.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.cluC2, paper.and.paperboard.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood non-coniferous non-tropical
+
+industrial.roundwood.non.coniferous.non.tropical.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.btw.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.btw2, industrial.roundwood.non.coniferous.non.tropical.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.clo.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.clo2, industrial.roundwood.non.coniferous.non.tropical.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.eig.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.eig2, industrial.roundwood.non.coniferous.non.tropical.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.ind.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.ind2, industrial.roundwood.non.coniferous.non.tropical.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.oud.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.oud2, industrial.roundwood.non.coniferous.non.tropical.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.clu.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.clu2, industrial.roundwood.non.coniferous.non.tropical.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.btwC.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.btwC2, industrial.roundwood.non.coniferous.non.tropical.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.cloC.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.cloC2, industrial.roundwood.non.coniferous.non.tropical.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.eigC.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.eigC2, industrial.roundwood.non.coniferous.non.tropical.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.cluC.clustered2 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.cluC2, industrial.roundwood.non.coniferous.non.tropical.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Sawnwood - coniferous
+
+sawnwood.coniferous.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.btw.clustered2 <- coeftest(sawnwood.coniferous.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.btw2, sawnwood.coniferous.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.clo.clustered2 <- coeftest(sawnwood.coniferous.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.clo2, sawnwood.coniferous.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.eig.clustered2 <- coeftest(sawnwood.coniferous.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.eig2, sawnwood.coniferous.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.ind.clustered2 <- coeftest(sawnwood.coniferous.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.ind2, sawnwood.coniferous.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.oud.clustered2 <- coeftest(sawnwood.coniferous.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.oud2, sawnwood.coniferous.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.clu.clustered2 <- coeftest(sawnwood.coniferous.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.clu2, sawnwood.coniferous.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.btwC.clustered2 <- coeftest(sawnwood.coniferous.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.btwC2, sawnwood.coniferous.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.cloC.clustered2 <- coeftest(sawnwood.coniferous.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.cloC2, sawnwood.coniferous.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.eigC.clustered2 <- coeftest(sawnwood.coniferous.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.eigC2, sawnwood.coniferous.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.cluC.clustered2 <- coeftest(sawnwood.coniferous.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.cluC2, sawnwood.coniferous.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Veneer sheets
+
+veneer.sheets.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.btw.clustered2 <- coeftest(veneer.sheets.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.btw2, veneer.sheets.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.clo.clustered2 <- coeftest(veneer.sheets.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.clo2, veneer.sheets.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.eig.clustered2 <- coeftest(veneer.sheets.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.eig2, veneer.sheets.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.ind.clustered2 <- coeftest(veneer.sheets.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.ind2, veneer.sheets.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.oud.clustered2 <- coeftest(veneer.sheets.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.oud2, veneer.sheets.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.clu.clustered2 <- coeftest(veneer.sheets.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.clu2, veneer.sheets.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.btwC.clustered2 <- coeftest(veneer.sheets.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.btwC2, veneer.sheets.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.cloC.clustered2 <- coeftest(veneer.sheets.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.cloC2, veneer.sheets.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.eigC.clustered2 <- coeftest(veneer.sheets.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.eigC2, veneer.sheets.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.cluC.clustered2 <- coeftest(veneer.sheets.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.cluC2, veneer.sheets.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Newsprint
+
+newsprint.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.btw.clustered2 <- coeftest(newsprint.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.btw2, newsprint.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.clo.clustered2 <- coeftest(newsprint.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.clo2, newsprint.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.eig.clustered2 <- coeftest(newsprint.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.eig2, newsprint.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.ind.clustered2 <- coeftest(newsprint.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.ind2, newsprint.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.oud.clustered2 <- coeftest(newsprint.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.oud2, newsprint.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.clu.clustered2 <- coeftest(newsprint.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.clu2, newsprint.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.btwC.clustered2 <- coeftest(newsprint.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.btwC2, newsprint.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.cloC.clustered2 <- coeftest(newsprint.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.cloC2, newsprint.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.eigC.clustered2 <- coeftest(newsprint.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.eigC2, newsprint.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.cluC.clustered2 <- coeftest(newsprint.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.cluC2, newsprint.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Fibreboard
+
+fibreboard.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.btw.clustered2 <- coeftest(fibreboard.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.btw2, fibreboard.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.clo.clustered2 <- coeftest(fibreboard.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.clo2, fibreboard.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.eig.clustered2 <- coeftest(fibreboard.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.eig2, fibreboard.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.ind.clustered2 <- coeftest(fibreboard.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.ind2, fibreboard.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.oud.clustered2 <- coeftest(fibreboard.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.oud2, fibreboard.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.clu.clustered2 <- coeftest(fibreboard.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.clu2, fibreboard.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.btwC.clustered2 <- coeftest(fibreboard.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.btwC2, fibreboard.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.cloC.clustered2 <- coeftest(fibreboard.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.cloC2, fibreboard.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.eigC.clustered2 <- coeftest(fibreboard.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.eigC2, fibreboard.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.cluC.clustered2 <- coeftest(fibreboard.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.cluC2, fibreboard.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood - coniferous
+
+industrial.roundwood.coniferous.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.btw.clustered2 <- coeftest(industrial.roundwood.coniferous.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.btw2, industrial.roundwood.coniferous.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.clo.clustered2 <- coeftest(industrial.roundwood.coniferous.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.clo2, industrial.roundwood.coniferous.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.eig.clustered2 <- coeftest(industrial.roundwood.coniferous.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.eig2, industrial.roundwood.coniferous.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.ind.clustered2 <- coeftest(industrial.roundwood.coniferous.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.ind2, industrial.roundwood.coniferous.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.oud.clustered2 <- coeftest(industrial.roundwood.coniferous.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.oud2, industrial.roundwood.coniferous.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.clu.clustered2 <- coeftest(industrial.roundwood.coniferous.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.clu2, industrial.roundwood.coniferous.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.btwC.clustered2 <- coeftest(industrial.roundwood.coniferous.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.btwC2, industrial.roundwood.coniferous.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.cloC.clustered2 <- coeftest(industrial.roundwood.coniferous.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.cloC2, industrial.roundwood.coniferous.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.eigC.clustered2 <- coeftest(industrial.roundwood.coniferous.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.eigC2, industrial.roundwood.coniferous.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.cluC.clustered2 <- coeftest(industrial.roundwood.coniferous.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.cluC2, industrial.roundwood.coniferous.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Sawnwood - non-coniferous
+
+sawnwood.non.coniferous.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.btw.clustered2 <- coeftest(sawnwood.non.coniferous.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.btw2, sawnwood.non.coniferous.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.clo.clustered2 <- coeftest(sawnwood.non.coniferous.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.clo2, sawnwood.non.coniferous.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.eig.clustered2 <- coeftest(sawnwood.non.coniferous.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.eig2, sawnwood.non.coniferous.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.ind.clustered2 <- coeftest(sawnwood.non.coniferous.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.ind2, sawnwood.non.coniferous.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.oud.clustered2 <- coeftest(sawnwood.non.coniferous.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.oud2, sawnwood.non.coniferous.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.clu.clustered2 <- coeftest(sawnwood.non.coniferous.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.clu2, sawnwood.non.coniferous.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.btwC.clustered2 <- coeftest(sawnwood.non.coniferous.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.btwC2, sawnwood.non.coniferous.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.cloC.clustered2 <- coeftest(sawnwood.non.coniferous.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.cloC2, sawnwood.non.coniferous.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.eigC.clustered2 <- coeftest(sawnwood.non.coniferous.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.eigC2, sawnwood.non.coniferous.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.cluC.clustered2 <- coeftest(sawnwood.non.coniferous.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.cluC2, sawnwood.non.coniferous.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Wood pulp
+
+wood.pulp.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.btw.clustered2 <- coeftest(wood.pulp.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.btw2, wood.pulp.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.clo.clustered2 <- coeftest(wood.pulp.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.clo2, wood.pulp.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.eig.clustered2 <- coeftest(wood.pulp.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.eig2, wood.pulp.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.ind.clustered2 <- coeftest(wood.pulp.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.ind2, wood.pulp.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.oud.clustered2 <- coeftest(wood.pulp.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.oud2, wood.pulp.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.clu.clustered2 <- coeftest(wood.pulp.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.clu2, wood.pulp.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.btwC.clustered2 <- coeftest(wood.pulp.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.btwC2, wood.pulp.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.cloC.clustered2 <- coeftest(wood.pulp.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.cloC2, wood.pulp.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.eigC.clustered2 <- coeftest(wood.pulp.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.eigC2, wood.pulp.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.cluC.clustered2 <- coeftest(wood.pulp.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.cluC2, wood.pulp.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood non-coniferous tropical
+
+industrial.roundwood.non.coniferous.tropical.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.btw.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.btw2, industrial.roundwood.non.coniferous.tropical.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.clo.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.clo2, industrial.roundwood.non.coniferous.tropical.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.eig.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.eig2, industrial.roundwood.non.coniferous.tropical.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.ind.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.ind2, industrial.roundwood.non.coniferous.tropical.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.oud.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.oud2, industrial.roundwood.non.coniferous.tropical.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.clu.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.clu2, industrial.roundwood.non.coniferous.tropical.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.btwC.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.btwC2, industrial.roundwood.non.coniferous.tropical.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.cloC.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.cloC2, industrial.roundwood.non.coniferous.tropical.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.eigC.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.eigC2, industrial.roundwood.non.coniferous.tropical.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.cluC.clustered2 <- coeftest(industrial.roundwood.non.coniferous.tropical.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.cluC2, industrial.roundwood.non.coniferous.tropical.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# Wood chips and particles
+
+wood.chips.and.particles.btw2 <- lm(Betweenness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.btw.clustered2 <- coeftest(wood.chips.and.particles.btw2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.btw2, wood.chips.and.particles.btw.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.clo2 <- lm(Closeness.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.clo.clustered2 <- coeftest(wood.chips.and.particles.clo2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.clo2, wood.chips.and.particles.clo.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.eig2 <- lm(Eigenvector.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.eig.clustered2 <- coeftest(wood.chips.and.particles.eig2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.eig2, wood.chips.and.particles.eig.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.ind2 <- lm(In.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.ind.clustered2 <- coeftest(wood.chips.and.particles.ind2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.ind2, wood.chips.and.particles.ind.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.oud2 <- lm(Out.Degree.Centrality...Trade ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.oud.clustered2 <- coeftest(wood.chips.and.particles.oud2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.oud2, wood.chips.and.particles.oud.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.clu2 <- lm(Clustering.Coefficient...Trade ~ KP*Post2 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.clu.clustered2 <- coeftest(wood.chips.and.particles.clu2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.clu2, wood.chips.and.particles.clu.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.btwC2 <- lm(Betweenness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.btwC.clustered2 <- coeftest(wood.chips.and.particles.btwC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.btwC2, wood.chips.and.particles.btwC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.cloC2 <- lm(Closeness.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.cloC.clustered2 <- coeftest(wood.chips.and.particles.cloC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.cloC2, wood.chips.and.particles.cloC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.eigC2 <- lm(Eigenvector.Centrality...Competition ~ KP*Post2 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.eigC.clustered2 <- coeftest(wood.chips.and.particles.eigC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.eigC2, wood.chips.and.particles.eigC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.cluC2 <- lm(Clustering.Coefficient...Competition ~ KP*Post2 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.cluC.clustered2 <- coeftest(wood.chips.and.particles.cluC2, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.cluC2, wood.chips.and.particles.cluC.clustered2, type = 'text', omit = c('Nation', 'Year'))
+
+# KP variable with a 3 year lead
+
+# Trade Data
+
+trade.data.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.btw.clustered3 <- coeftest(trade.data.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.btw3, trade.data.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.clo.clustered3 <- coeftest(trade.data.clo3, vcov = vcovCL, cluster = ~Nation)
+
+
+trade.data.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.eig.clustered3 <- coeftest(trade.data.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.eig3, trade.data.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.ind.clustered3 <- coeftest(trade.data.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.ind3, trade.data.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.oud.clustered3 <- coeftest(trade.data.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.oud3, trade.data.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.clu.clustered3 <- coeftest(trade.data.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.clu3, trade.data.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.btwC.clustered3 <- coeftest(trade.data.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.btwC3, trade.data.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.cloC.clustered3 <- coeftest(trade.data.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.cloC3, trade.data.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.eigC.clustered3 <- coeftest(trade.data.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.eigC3, trade.data.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+trade.data.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = trade.data)
+
+trade.data.cluC.clustered3 <- coeftest(trade.data.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(trade.data.cluC3, trade.data.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Plywood
+
+plywood.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.btw.clustered3 <- coeftest(plywood.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.btw3, plywood.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.clo.clustered3 <- coeftest(plywood.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.clo3, plywood.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.eig.clustered3 <- coeftest(plywood.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.eig3, plywood.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.ind.clustered3 <- coeftest(plywood.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.ind3, plywood.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.oud.clustered3 <- coeftest(plywood.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.oud3, plywood.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                   + GDP.per.capita..constant.2010.US..
+                   + Ores.and.metals.exports....of.merchandise.exports.
+                   + Ores.and.metals.imports....of.merchandise.imports.
+                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                   + Tariff.rate..applied..weighted.mean..all.products....
+                   + Tariff.rate..applied..weighted.mean..primary.products....
+                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                   + Average.Clustering.Coefficient...Trade
+                   + factor(Nation) + factor(Year), data = plywood)
+
+plywood.clu.clustered3 <- coeftest(plywood.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.clu3, plywood.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.btwC.clustered3 <- coeftest(plywood.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.btwC3, plywood.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.cloC.clustered3 <- coeftest(plywood.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.cloC3, plywood.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.eigC.clustered3 <- coeftest(plywood.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.eigC3, plywood.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+plywood.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                    + GDP.per.capita..constant.2010.US..
+                    + Ores.and.metals.exports....of.merchandise.exports.
+                    + Ores.and.metals.imports....of.merchandise.imports.
+                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                    + Tariff.rate..applied..weighted.mean..all.products....
+                    + Tariff.rate..applied..weighted.mean..primary.products....
+                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                    + Average.Clustering.Coefficient...Comp
+                    + factor(Nation) + factor(Year), data = plywood)
+
+plywood.cluC.clustered3 <- coeftest(plywood.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(plywood.cluC3, plywood.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Paper and paperboard
+
+paper.and.paperboard.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.btw.clustered3 <- coeftest(paper.and.paperboard.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.btw3, paper.and.paperboard.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.clo.clustered3 <- coeftest(paper.and.paperboard.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.clo3, paper.and.paperboard.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.eig.clustered3 <- coeftest(paper.and.paperboard.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.eig3, paper.and.paperboard.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.ind.clustered3 <- coeftest(paper.and.paperboard.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.ind3, paper.and.paperboard.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.oud.clustered3 <- coeftest(paper.and.paperboard.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.oud3, paper.and.paperboard.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Trade
+                                + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.clu.clustered3 <- coeftest(paper.and.paperboard.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.clu3, paper.and.paperboard.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.btwC.clustered3 <- coeftest(paper.and.paperboard.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.btwC3, paper.and.paperboard.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.cloC.clustered3 <- coeftest(paper.and.paperboard.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.cloC3, paper.and.paperboard.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.eigC.clustered3 <- coeftest(paper.and.paperboard.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.eigC3, paper.and.paperboard.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+paper.and.paperboard.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                                 + GDP.per.capita..constant.2010.US..
+                                 + Ores.and.metals.exports....of.merchandise.exports.
+                                 + Ores.and.metals.imports....of.merchandise.imports.
+                                 + Forest.area..sq..km. + Forest.area....of.land.area.
+                                 + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                 + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                 + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                 + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                 + Tariff.rate..applied..weighted.mean..all.products....
+                                 + Tariff.rate..applied..weighted.mean..primary.products....
+                                 + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                 + Average.Clustering.Coefficient...Comp
+                                 + factor(Nation) + factor(Year), data = paper.and.paperboard)
+
+paper.and.paperboard.cluC.clustered3 <- coeftest(paper.and.paperboard.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(paper.and.paperboard.cluC3, paper.and.paperboard.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood non-coniferous non-tropical
+
+industrial.roundwood.non.coniferous.non.tropical.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.btw.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.btw3, industrial.roundwood.non.coniferous.non.tropical.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.clo.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.clo3, industrial.roundwood.non.coniferous.non.tropical.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.eig.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.eig3, industrial.roundwood.non.coniferous.non.tropical.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.ind.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.ind3, industrial.roundwood.non.coniferous.non.tropical.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.oud.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.oud3, industrial.roundwood.non.coniferous.non.tropical.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                                                            + GDP.per.capita..constant.2010.US..
+                                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                            + Average.Clustering.Coefficient...Trade
+                                                            + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.clu.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.clu3, industrial.roundwood.non.coniferous.non.tropical.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.btwC.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.btwC3, industrial.roundwood.non.coniferous.non.tropical.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.cloC.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.cloC3, industrial.roundwood.non.coniferous.non.tropical.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.eigC.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.eigC3, industrial.roundwood.non.coniferous.non.tropical.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.non.tropical.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                                                             + GDP.per.capita..constant.2010.US..
+                                                             + Ores.and.metals.exports....of.merchandise.exports.
+                                                             + Ores.and.metals.imports....of.merchandise.imports.
+                                                             + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                             + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                             + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                             + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                             + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                             + Tariff.rate..applied..weighted.mean..all.products....
+                                                             + Tariff.rate..applied..weighted.mean..primary.products....
+                                                             + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                             + Average.Clustering.Coefficient...Comp
+                                                             + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.non.tropical)
+
+industrial.roundwood.non.coniferous.non.tropical.cluC.clustered3 <- coeftest(industrial.roundwood.non.coniferous.non.tropical.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.non.tropical.cluC3, industrial.roundwood.non.coniferous.non.tropical.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Sawnwood - coniferous
+
+sawnwood.coniferous.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.btw.clustered3 <- coeftest(sawnwood.coniferous.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.btw3, sawnwood.coniferous.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.clo.clustered3 <- coeftest(sawnwood.coniferous.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.clo3, sawnwood.coniferous.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.eig.clustered3 <- coeftest(sawnwood.coniferous.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.eig3, sawnwood.coniferous.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.ind.clustered3 <- coeftest(sawnwood.coniferous.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.ind3, sawnwood.coniferous.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.oud.clustered3 <- coeftest(sawnwood.coniferous.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.oud3, sawnwood.coniferous.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                               + GDP.per.capita..constant.2010.US..
+                               + Ores.and.metals.exports....of.merchandise.exports.
+                               + Ores.and.metals.imports....of.merchandise.imports.
+                               + Forest.area..sq..km. + Forest.area....of.land.area.
+                               + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                               + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                               + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                               + Real.interest.rate.... + Population..total + Population.growth..annual...
+                               + Tariff.rate..applied..weighted.mean..all.products....
+                               + Tariff.rate..applied..weighted.mean..primary.products....
+                               + Tariff.rate..applied..weighted.mean..manufactured.products....
+                               + Average.Clustering.Coefficient...Trade
+                               + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.clu.clustered3 <- coeftest(sawnwood.coniferous.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.clu3, sawnwood.coniferous.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.btwC.clustered3 <- coeftest(sawnwood.coniferous.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.btwC3, sawnwood.coniferous.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.cloC.clustered3 <- coeftest(sawnwood.coniferous.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.cloC3, sawnwood.coniferous.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.eigC.clustered3 <- coeftest(sawnwood.coniferous.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.eigC3, sawnwood.coniferous.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.coniferous.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                                + GDP.per.capita..constant.2010.US..
+                                + Ores.and.metals.exports....of.merchandise.exports.
+                                + Ores.and.metals.imports....of.merchandise.imports.
+                                + Forest.area..sq..km. + Forest.area....of.land.area.
+                                + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                + Tariff.rate..applied..weighted.mean..all.products....
+                                + Tariff.rate..applied..weighted.mean..primary.products....
+                                + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                + Average.Clustering.Coefficient...Comp
+                                + factor(Nation) + factor(Year), data = sawnwood.coniferous)
+
+sawnwood.coniferous.cluC.clustered3 <- coeftest(sawnwood.coniferous.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.coniferous.cluC3, sawnwood.coniferous.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Veneer sheets
+
+veneer.sheets.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.btw.clustered3 <- coeftest(veneer.sheets.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.btw3, veneer.sheets.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.clo.clustered3 <- coeftest(veneer.sheets.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.clo3, veneer.sheets.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.eig.clustered3 <- coeftest(veneer.sheets.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.eig3, veneer.sheets.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.ind.clustered3 <- coeftest(veneer.sheets.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.ind3, veneer.sheets.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.oud.clustered3 <- coeftest(veneer.sheets.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.oud3, veneer.sheets.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                         + GDP.per.capita..constant.2010.US..
+                         + Ores.and.metals.exports....of.merchandise.exports.
+                         + Ores.and.metals.imports....of.merchandise.imports.
+                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                         + Tariff.rate..applied..weighted.mean..all.products....
+                         + Tariff.rate..applied..weighted.mean..primary.products....
+                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                         + Average.Clustering.Coefficient...Trade
+                         + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.clu.clustered3 <- coeftest(veneer.sheets.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.clu3, veneer.sheets.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.btwC.clustered3 <- coeftest(veneer.sheets.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.btwC3, veneer.sheets.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.cloC.clustered3 <- coeftest(veneer.sheets.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.cloC3, veneer.sheets.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.eigC.clustered3 <- coeftest(veneer.sheets.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.eigC3, veneer.sheets.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+veneer.sheets.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                          + GDP.per.capita..constant.2010.US..
+                          + Ores.and.metals.exports....of.merchandise.exports.
+                          + Ores.and.metals.imports....of.merchandise.imports.
+                          + Forest.area..sq..km. + Forest.area....of.land.area.
+                          + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                          + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                          + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                          + Real.interest.rate.... + Population..total + Population.growth..annual...
+                          + Tariff.rate..applied..weighted.mean..all.products....
+                          + Tariff.rate..applied..weighted.mean..primary.products....
+                          + Tariff.rate..applied..weighted.mean..manufactured.products....
+                          + Average.Clustering.Coefficient...Comp
+                          + factor(Nation) + factor(Year), data = veneer.sheets)
+
+veneer.sheets.cluC.clustered3 <- coeftest(veneer.sheets.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(veneer.sheets.cluC3, veneer.sheets.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Newsprint
+
+newsprint.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.btw.clustered3 <- coeftest(newsprint.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.btw3, newsprint.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.clo.clustered3 <- coeftest(newsprint.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.clo3, newsprint.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.eig.clustered3 <- coeftest(newsprint.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.eig3, newsprint.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.ind.clustered3 <- coeftest(newsprint.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.ind3, newsprint.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.oud.clustered3 <- coeftest(newsprint.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.oud3, newsprint.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.clu.clustered3 <- coeftest(newsprint.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.clu3, newsprint.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.btwC.clustered3 <- coeftest(newsprint.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.btwC3, newsprint.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.cloC.clustered3 <- coeftest(newsprint.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.cloC3, newsprint.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.eigC.clustered3 <- coeftest(newsprint.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.eigC3, newsprint.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+newsprint.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = newsprint)
+
+newsprint.cluC.clustered3 <- coeftest(newsprint.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(newsprint.cluC3, newsprint.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Fibreboard
+
+fibreboard.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.btw.clustered3 <- coeftest(fibreboard.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.btw3, fibreboard.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.clo.clustered3 <- coeftest(fibreboard.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.clo3, fibreboard.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.eig.clustered3 <- coeftest(fibreboard.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.eig3, fibreboard.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.ind.clustered3 <- coeftest(fibreboard.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.ind3, fibreboard.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.oud.clustered3 <- coeftest(fibreboard.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.oud3, fibreboard.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Trade
+                      + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.clu.clustered3 <- coeftest(fibreboard.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.clu3, fibreboard.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.btwC.clustered3 <- coeftest(fibreboard.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.btwC3, fibreboard.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.cloC.clustered3 <- coeftest(fibreboard.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.cloC3, fibreboard.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.eigC.clustered3 <- coeftest(fibreboard.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.eigC3, fibreboard.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+fibreboard.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                       + GDP.per.capita..constant.2010.US..
+                       + Ores.and.metals.exports....of.merchandise.exports.
+                       + Ores.and.metals.imports....of.merchandise.imports.
+                       + Forest.area..sq..km. + Forest.area....of.land.area.
+                       + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                       + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                       + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                       + Real.interest.rate.... + Population..total + Population.growth..annual...
+                       + Tariff.rate..applied..weighted.mean..all.products....
+                       + Tariff.rate..applied..weighted.mean..primary.products....
+                       + Tariff.rate..applied..weighted.mean..manufactured.products....
+                       + Average.Clustering.Coefficient...Comp
+                       + factor(Nation) + factor(Year), data = fibreboard)
+
+fibreboard.cluC.clustered3 <- coeftest(fibreboard.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(fibreboard.cluC3, fibreboard.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood - coniferous
+
+industrial.roundwood.coniferous.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.btw.clustered3 <- coeftest(industrial.roundwood.coniferous.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.btw3, industrial.roundwood.coniferous.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.clo.clustered3 <- coeftest(industrial.roundwood.coniferous.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.clo3, industrial.roundwood.coniferous.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.eig.clustered3 <- coeftest(industrial.roundwood.coniferous.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.eig3, industrial.roundwood.coniferous.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.ind.clustered3 <- coeftest(industrial.roundwood.coniferous.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.ind3, industrial.roundwood.coniferous.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.oud.clustered3 <- coeftest(industrial.roundwood.coniferous.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.oud3, industrial.roundwood.coniferous.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                                           + GDP.per.capita..constant.2010.US..
+                                           + Ores.and.metals.exports....of.merchandise.exports.
+                                           + Ores.and.metals.imports....of.merchandise.imports.
+                                           + Forest.area..sq..km. + Forest.area....of.land.area.
+                                           + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                           + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                           + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                           + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                           + Tariff.rate..applied..weighted.mean..all.products....
+                                           + Tariff.rate..applied..weighted.mean..primary.products....
+                                           + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                           + Average.Clustering.Coefficient...Trade
+                                           + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.clu.clustered3 <- coeftest(industrial.roundwood.coniferous.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.clu3, industrial.roundwood.coniferous.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.btwC.clustered3 <- coeftest(industrial.roundwood.coniferous.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.btwC3, industrial.roundwood.coniferous.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.cloC.clustered3 <- coeftest(industrial.roundwood.coniferous.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.cloC3, industrial.roundwood.coniferous.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.eigC.clustered3 <- coeftest(industrial.roundwood.coniferous.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.eigC3, industrial.roundwood.coniferous.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.coniferous.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                                            + GDP.per.capita..constant.2010.US..
+                                            + Ores.and.metals.exports....of.merchandise.exports.
+                                            + Ores.and.metals.imports....of.merchandise.imports.
+                                            + Forest.area..sq..km. + Forest.area....of.land.area.
+                                            + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                            + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                            + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                            + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                            + Tariff.rate..applied..weighted.mean..all.products....
+                                            + Tariff.rate..applied..weighted.mean..primary.products....
+                                            + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                            + Average.Clustering.Coefficient...Comp
+                                            + factor(Nation) + factor(Year), data = industrial.roundwood.coniferous)
+
+industrial.roundwood.coniferous.cluC.clustered3 <- coeftest(industrial.roundwood.coniferous.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.coniferous.cluC3, industrial.roundwood.coniferous.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Sawnwood - non-coniferous
+
+sawnwood.non.coniferous.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.btw.clustered3 <- coeftest(sawnwood.non.coniferous.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.btw3, sawnwood.non.coniferous.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.clo.clustered3 <- coeftest(sawnwood.non.coniferous.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.clo3, sawnwood.non.coniferous.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.eig.clustered3 <- coeftest(sawnwood.non.coniferous.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.eig3, sawnwood.non.coniferous.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.ind.clustered3 <- coeftest(sawnwood.non.coniferous.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.ind3, sawnwood.non.coniferous.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.oud.clustered3 <- coeftest(sawnwood.non.coniferous.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.oud3, sawnwood.non.coniferous.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                                   + GDP.per.capita..constant.2010.US..
+                                   + Ores.and.metals.exports....of.merchandise.exports.
+                                   + Ores.and.metals.imports....of.merchandise.imports.
+                                   + Forest.area..sq..km. + Forest.area....of.land.area.
+                                   + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                   + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                   + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                   + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                   + Tariff.rate..applied..weighted.mean..all.products....
+                                   + Tariff.rate..applied..weighted.mean..primary.products....
+                                   + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                   + Average.Clustering.Coefficient...Trade
+                                   + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.clu.clustered3 <- coeftest(sawnwood.non.coniferous.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.clu3, sawnwood.non.coniferous.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.btwC.clustered3 <- coeftest(sawnwood.non.coniferous.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.btwC3, sawnwood.non.coniferous.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.cloC.clustered3 <- coeftest(sawnwood.non.coniferous.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.cloC3, sawnwood.non.coniferous.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.eigC.clustered3 <- coeftest(sawnwood.non.coniferous.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.eigC3, sawnwood.non.coniferous.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+sawnwood.non.coniferous.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Comp
+                                    + factor(Nation) + factor(Year), data = sawnwood.non.coniferous)
+
+sawnwood.non.coniferous.cluC.clustered3 <- coeftest(sawnwood.non.coniferous.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(sawnwood.non.coniferous.cluC3, sawnwood.non.coniferous.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Wood pulp
+
+wood.pulp.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.btw.clustered3 <- coeftest(wood.pulp.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.btw3, wood.pulp.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.clo.clustered3 <- coeftest(wood.pulp.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.clo3, wood.pulp.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.eig.clustered3 <- coeftest(wood.pulp.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.eig3, wood.pulp.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.ind.clustered3 <- coeftest(wood.pulp.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.ind3, wood.pulp.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.oud.clustered3 <- coeftest(wood.pulp.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.oud3, wood.pulp.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                     + GDP.per.capita..constant.2010.US..
+                     + Ores.and.metals.exports....of.merchandise.exports.
+                     + Ores.and.metals.imports....of.merchandise.imports.
+                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                     + Tariff.rate..applied..weighted.mean..all.products....
+                     + Tariff.rate..applied..weighted.mean..primary.products....
+                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                     + Average.Clustering.Coefficient...Trade
+                     + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.clu.clustered3 <- coeftest(wood.pulp.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.clu3, wood.pulp.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.btwC.clustered3 <- coeftest(wood.pulp.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.btwC3, wood.pulp.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.cloC.clustered3 <- coeftest(wood.pulp.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.cloC3, wood.pulp.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.eigC.clustered3 <- coeftest(wood.pulp.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.eigC3, wood.pulp.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.pulp.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                      + GDP.per.capita..constant.2010.US..
+                      + Ores.and.metals.exports....of.merchandise.exports.
+                      + Ores.and.metals.imports....of.merchandise.imports.
+                      + Forest.area..sq..km. + Forest.area....of.land.area.
+                      + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                      + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                      + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                      + Real.interest.rate.... + Population..total + Population.growth..annual...
+                      + Tariff.rate..applied..weighted.mean..all.products....
+                      + Tariff.rate..applied..weighted.mean..primary.products....
+                      + Tariff.rate..applied..weighted.mean..manufactured.products....
+                      + Average.Clustering.Coefficient...Comp
+                      + factor(Nation) + factor(Year), data = wood.pulp)
+
+wood.pulp.cluC.clustered3 <- coeftest(wood.pulp.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.pulp.cluC3, wood.pulp.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Industrial roundwood non-coniferous tropical
+
+industrial.roundwood.non.coniferous.tropical.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.btw.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.btw3, industrial.roundwood.non.coniferous.tropical.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.clo.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.clo3, industrial.roundwood.non.coniferous.tropical.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.eig.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.eig3, industrial.roundwood.non.coniferous.tropical.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.ind.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.ind3, industrial.roundwood.non.coniferous.tropical.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.oud.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.oud3, industrial.roundwood.non.coniferous.tropical.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                                                        + GDP.per.capita..constant.2010.US..
+                                                        + Ores.and.metals.exports....of.merchandise.exports.
+                                                        + Ores.and.metals.imports....of.merchandise.imports.
+                                                        + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                        + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                        + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                        + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                        + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                        + Tariff.rate..applied..weighted.mean..all.products....
+                                                        + Tariff.rate..applied..weighted.mean..primary.products....
+                                                        + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                        + Average.Clustering.Coefficient...Trade
+                                                        + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.clu.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.clu3, industrial.roundwood.non.coniferous.tropical.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.btwC.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.btwC3, industrial.roundwood.non.coniferous.tropical.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.cloC.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.cloC3, industrial.roundwood.non.coniferous.tropical.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.eigC.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.eigC3, industrial.roundwood.non.coniferous.tropical.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+industrial.roundwood.non.coniferous.tropical.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                                                         + GDP.per.capita..constant.2010.US..
+                                                         + Ores.and.metals.exports....of.merchandise.exports.
+                                                         + Ores.and.metals.imports....of.merchandise.imports.
+                                                         + Forest.area..sq..km. + Forest.area....of.land.area.
+                                                         + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                                         + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                                         + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                                         + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                                         + Tariff.rate..applied..weighted.mean..all.products....
+                                                         + Tariff.rate..applied..weighted.mean..primary.products....
+                                                         + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                                         + Average.Clustering.Coefficient...Comp
+                                                         + factor(Nation) + factor(Year), data = industrial.roundwood.non.coniferous.tropical)
+
+industrial.roundwood.non.coniferous.tropical.cluC.clustered3 <- coeftest(industrial.roundwood.non.coniferous.tropical.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(industrial.roundwood.non.coniferous.tropical.cluC3, industrial.roundwood.non.coniferous.tropical.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Wood chips and particles
+
+wood.chips.and.particles.btw3 <- lm(Betweenness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.btw.clustered3 <- coeftest(wood.chips.and.particles.btw3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.btw3, wood.chips.and.particles.btw.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.clo3 <- lm(Closeness.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.clo.clustered3 <- coeftest(wood.chips.and.particles.clo3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.clo3, wood.chips.and.particles.clo.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.eig3 <- lm(Eigenvector.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.eig.clustered3 <- coeftest(wood.chips.and.particles.eig3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.eig3, wood.chips.and.particles.eig.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.ind3 <- lm(In.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.ind.clustered3 <- coeftest(wood.chips.and.particles.ind3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.ind3, wood.chips.and.particles.ind.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.oud3 <- lm(Out.Degree.Centrality...Trade ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.oud.clustered3 <- coeftest(wood.chips.and.particles.oud3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.oud3, wood.chips.and.particles.oud.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.clu3 <- lm(Clustering.Coefficient...Trade ~ KP*Post3 + Net.Exports
+                                    + GDP.per.capita..constant.2010.US..
+                                    + Ores.and.metals.exports....of.merchandise.exports.
+                                    + Ores.and.metals.imports....of.merchandise.imports.
+                                    + Forest.area..sq..km. + Forest.area....of.land.area.
+                                    + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                    + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                    + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                    + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                    + Tariff.rate..applied..weighted.mean..all.products....
+                                    + Tariff.rate..applied..weighted.mean..primary.products....
+                                    + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                    + Average.Clustering.Coefficient...Trade
+                                    + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.clu.clustered3 <- coeftest(wood.chips.and.particles.clu3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.clu3, wood.chips.and.particles.clu.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.btwC3 <- lm(Betweenness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.btwC.clustered3 <- coeftest(wood.chips.and.particles.btwC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.btwC3, wood.chips.and.particles.btwC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.cloC3 <- lm(Closeness.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.cloC.clustered3 <- coeftest(wood.chips.and.particles.cloC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.cloC3, wood.chips.and.particles.cloC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.eigC3 <- lm(Eigenvector.Centrality...Competition ~ KP*Post3 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.eigC.clustered3 <- coeftest(wood.chips.and.particles.eigC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.eigC3, wood.chips.and.particles.eigC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+wood.chips.and.particles.cluC3 <- lm(Clustering.Coefficient...Competition ~ KP*Post3 + Net.Exports
+                                     + GDP.per.capita..constant.2010.US..
+                                     + Ores.and.metals.exports....of.merchandise.exports.
+                                     + Ores.and.metals.imports....of.merchandise.imports.
+                                     + Forest.area..sq..km. + Forest.area....of.land.area.
+                                     + Forest.rents....of.GDP. + Agricultural.land..sq..km.
+                                     + Agricultural.land....of.land.area. + Cereal.production..metric.tons.
+                                     + Cereal.yield..kg.per.hectare. + Land.under.cereal.production..hectares.
+                                     + Real.interest.rate.... + Population..total + Population.growth..annual...
+                                     + Tariff.rate..applied..weighted.mean..all.products....
+                                     + Tariff.rate..applied..weighted.mean..primary.products....
+                                     + Tariff.rate..applied..weighted.mean..manufactured.products....
+                                     + Average.Clustering.Coefficient...Comp
+                                     + factor(Nation) + factor(Year), data = wood.chips.and.particles)
+
+wood.chips.and.particles.cluC.clustered3 <- coeftest(wood.chips.and.particles.cluC3, vcov = vcovCL, cluster = ~Nation)
+
+#stargazer(wood.chips.and.particles.cluC3, wood.chips.and.particles.cluC.clustered3, type = 'text', omit = c('Nation', 'Year'))
+
+# Creating the results tables
+
+markets <- c('Total Trade', '', 'Fibreboard', '', 'Industrial Roundwood Coniferous', '',
+             'Industrial Roundwood Non-coniferous Non-tropical', '', 'Industrial Roundwood Non-coniferous Tropical', '',
+             'Newsprint', '', 'Paper and Paperboard', '', 'Plywood', '', 'Sawnwood Coniferous', '',
+             'Sawnwood Non-coniferous', '', 'Veneer Sheets', '', 'Wood Chips and Particles', '', 'Wood Pulp', '')
+
+# Trade Tables
+
+# Zero lead
+
+bet <- c(trade.data.btw.clustered[length(trade.data.btw.clustered)/4], trade.data.btw.clustered[length(trade.data.btw.clustered)/2],
+         fibreboard.btw.clustered[length(fibreboard.btw.clustered)/4], fibreboard.btw.clustered[length(fibreboard.btw.clustered)/2],
+         industrial.roundwood.coniferous.btw.clustered[length(industrial.roundwood.coniferous.btw.clustered)/4], industrial.roundwood.coniferous.btw.clustered[length(industrial.roundwood.coniferous.btw.clustered)/2],
+         industrial.roundwood.non.coniferous.non.tropical.btw.clustered[length(industrial.roundwood.non.coniferous.non.tropical.btw.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.btw.clustered[length(industrial.roundwood.non.coniferous.non.tropical.btw.clustered)/2],
+         industrial.roundwood.non.coniferous.tropical.btw.clustered[length(industrial.roundwood.non.coniferous.tropical.btw.clustered)/4], industrial.roundwood.non.coniferous.tropical.btw.clustered[length(industrial.roundwood.non.coniferous.tropical.btw.clustered)/2],
+         newsprint.btw.clustered[length(newsprint.btw.clustered)/4], newsprint.btw.clustered[length(newsprint.btw.clustered)/2],
+         paper.and.paperboard.btw.clustered[length(paper.and.paperboard.btw.clustered)/4], paper.and.paperboard.btw.clustered[length(paper.and.paperboard.btw.clustered)/2],
+         plywood.btw.clustered[length(plywood.btw.clustered)/4], plywood.btw.clustered[length(plywood.btw.clustered)/2],
+         sawnwood.coniferous.btw.clustered[length(sawnwood.coniferous.btw.clustered)/4], sawnwood.coniferous.btw.clustered[length(sawnwood.coniferous.btw.clustered)/2],
+         sawnwood.non.coniferous.btw.clustered[length(sawnwood.non.coniferous.btw.clustered)/4], sawnwood.non.coniferous.btw.clustered[length(sawnwood.non.coniferous.btw.clustered)/2],
+         veneer.sheets.btw.clustered[length(veneer.sheets.btw.clustered)/4], veneer.sheets.btw.clustered[length(veneer.sheets.btw.clustered)/2],
+         wood.chips.and.particles.btw.clustered[length(wood.chips.and.particles.btw.clustered)/4], wood.chips.and.particles.btw.clustered[length(wood.chips.and.particles.btw.clustered)/2],
+         wood.pulp.btw.clustered[length(wood.pulp.btw.clustered)/4], wood.pulp.btw.clustered[length(wood.pulp.btw.clustered)/2])
+
+clo <- c(trade.data.clo.clustered[length(trade.data.clo.clustered)/4], trade.data.clo.clustered[length(trade.data.clo.clustered)/2],
+         fibreboard.clo.clustered[length(fibreboard.clo.clustered)/4], fibreboard.clo.clustered[length(fibreboard.clo.clustered)/2],
+         industrial.roundwood.coniferous.clo.clustered[length(industrial.roundwood.coniferous.clo.clustered)/4], industrial.roundwood.coniferous.clo.clustered[length(industrial.roundwood.coniferous.clo.clustered)/2],
+         industrial.roundwood.non.coniferous.non.tropical.clo.clustered[length(industrial.roundwood.non.coniferous.non.tropical.clo.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.clo.clustered[length(industrial.roundwood.non.coniferous.non.tropical.clo.clustered)/2],
+         industrial.roundwood.non.coniferous.tropical.clo.clustered[length(industrial.roundwood.non.coniferous.tropical.clo.clustered)/4], industrial.roundwood.non.coniferous.tropical.clo.clustered[length(industrial.roundwood.non.coniferous.tropical.clo.clustered)/2],
+         newsprint.clo.clustered[length(newsprint.clo.clustered)/4], newsprint.clo.clustered[length(newsprint.clo.clustered)/2],
+         paper.and.paperboard.clo.clustered[length(paper.and.paperboard.clo.clustered)/4], paper.and.paperboard.clo.clustered[length(paper.and.paperboard.clo.clustered)/2],
+         plywood.clo.clustered[length(plywood.clo.clustered)/4], plywood.clo.clustered[length(plywood.clo.clustered)/2],
+         sawnwood.coniferous.clo.clustered[length(sawnwood.coniferous.clo.clustered)/4], sawnwood.coniferous.clo.clustered[length(sawnwood.coniferous.clo.clustered)/2],
+         sawnwood.non.coniferous.clo.clustered[length(sawnwood.non.coniferous.clo.clustered)/4], sawnwood.non.coniferous.clo.clustered[length(sawnwood.non.coniferous.clo.clustered)/2],
+         veneer.sheets.clo.clustered[length(veneer.sheets.clo.clustered)/4], veneer.sheets.clo.clustered[length(veneer.sheets.clo.clustered)/2],
+         wood.chips.and.particles.clo.clustered[length(wood.chips.and.particles.clo.clustered)/4], wood.chips.and.particles.clo.clustered[length(wood.chips.and.particles.clo.clustered)/2],
+         wood.pulp.clo.clustered[length(wood.pulp.clo.clustered)/4], wood.pulp.clo.clustered[length(wood.pulp.clo.clustered)/2])
+
+eig <- c(trade.data.eig.clustered[length(trade.data.eig.clustered)/4], trade.data.eig.clustered[length(trade.data.eig.clustered)/2],
+         fibreboard.eig.clustered[length(fibreboard.eig.clustered)/4], fibreboard.eig.clustered[length(fibreboard.eig.clustered)/2],
+         industrial.roundwood.coniferous.eig.clustered[length(industrial.roundwood.coniferous.eig.clustered)/4], industrial.roundwood.coniferous.eig.clustered[length(industrial.roundwood.coniferous.eig.clustered)/2],
+         industrial.roundwood.non.coniferous.non.tropical.eig.clustered[length(industrial.roundwood.non.coniferous.non.tropical.eig.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.eig.clustered[length(industrial.roundwood.non.coniferous.non.tropical.eig.clustered)/2],
+         industrial.roundwood.non.coniferous.tropical.eig.clustered[length(industrial.roundwood.non.coniferous.tropical.eig.clustered)/4], industrial.roundwood.non.coniferous.tropical.eig.clustered[length(industrial.roundwood.non.coniferous.tropical.eig.clustered)/2],
+         newsprint.eig.clustered[length(newsprint.eig.clustered)/4], newsprint.eig.clustered[length(newsprint.eig.clustered)/2],
+         paper.and.paperboard.eig.clustered[length(paper.and.paperboard.eig.clustered)/4], paper.and.paperboard.eig.clustered[length(paper.and.paperboard.eig.clustered)/2],
+         plywood.eig.clustered[length(plywood.eig.clustered)/4], plywood.eig.clustered[length(plywood.eig.clustered)/2],
+         sawnwood.coniferous.eig.clustered[length(sawnwood.coniferous.eig.clustered)/4], sawnwood.coniferous.eig.clustered[length(sawnwood.coniferous.eig.clustered)/2],
+         sawnwood.non.coniferous.eig.clustered[length(sawnwood.non.coniferous.eig.clustered)/4], sawnwood.non.coniferous.eig.clustered[length(sawnwood.non.coniferous.eig.clustered)/2],
+         veneer.sheets.eig.clustered[length(veneer.sheets.eig.clustered)/4], veneer.sheets.eig.clustered[length(veneer.sheets.eig.clustered)/2],
+         wood.chips.and.particles.eig.clustered[length(wood.chips.and.particles.eig.clustered)/4], wood.chips.and.particles.eig.clustered[length(wood.chips.and.particles.eig.clustered)/2],
+         wood.pulp.eig.clustered[length(wood.pulp.eig.clustered)/4], wood.pulp.eig.clustered[length(wood.pulp.eig.clustered)/2])
+
+ind <- c(trade.data.ind.clustered[length(trade.data.ind.clustered)/4], trade.data.ind.clustered[length(trade.data.ind.clustered)/2],
+         fibreboard.ind.clustered[length(fibreboard.ind.clustered)/4], fibreboard.ind.clustered[length(fibreboard.ind.clustered)/2],
+         industrial.roundwood.coniferous.ind.clustered[length(industrial.roundwood.coniferous.ind.clustered)/4], industrial.roundwood.coniferous.ind.clustered[length(industrial.roundwood.coniferous.ind.clustered)/2],
+         industrial.roundwood.non.coniferous.non.tropical.ind.clustered[length(industrial.roundwood.non.coniferous.non.tropical.ind.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.ind.clustered[length(industrial.roundwood.non.coniferous.non.tropical.ind.clustered)/2],
+         industrial.roundwood.non.coniferous.tropical.ind.clustered[length(industrial.roundwood.non.coniferous.tropical.ind.clustered)/4], industrial.roundwood.non.coniferous.tropical.ind.clustered[length(industrial.roundwood.non.coniferous.tropical.ind.clustered)/2],
+         newsprint.ind.clustered[length(newsprint.ind.clustered)/4], newsprint.ind.clustered[length(newsprint.ind.clustered)/2],
+         paper.and.paperboard.ind.clustered[length(paper.and.paperboard.ind.clustered)/4], paper.and.paperboard.ind.clustered[length(paper.and.paperboard.ind.clustered)/2],
+         plywood.ind.clustered[length(plywood.ind.clustered)/4], plywood.ind.clustered[length(plywood.ind.clustered)/2],
+         sawnwood.coniferous.ind.clustered[length(sawnwood.coniferous.ind.clustered)/4], sawnwood.coniferous.ind.clustered[length(sawnwood.coniferous.ind.clustered)/2],
+         sawnwood.non.coniferous.ind.clustered[length(sawnwood.non.coniferous.ind.clustered)/4], sawnwood.non.coniferous.ind.clustered[length(sawnwood.non.coniferous.ind.clustered)/2],
+         veneer.sheets.ind.clustered[length(veneer.sheets.ind.clustered)/4], veneer.sheets.ind.clustered[length(veneer.sheets.ind.clustered)/2],
+         wood.chips.and.particles.ind.clustered[length(wood.chips.and.particles.ind.clustered)/4], wood.chips.and.particles.ind.clustered[length(wood.chips.and.particles.ind.clustered)/2],
+         wood.pulp.ind.clustered[length(wood.pulp.ind.clustered)/4], wood.pulp.ind.clustered[length(wood.pulp.ind.clustered)/2])
+
+oud <- c(trade.data.oud.clustered[length(trade.data.oud.clustered)/4], trade.data.oud.clustered[length(trade.data.oud.clustered)/2],
+         fibreboard.oud.clustered[length(fibreboard.oud.clustered)/4], fibreboard.oud.clustered[length(fibreboard.oud.clustered)/2],
+         industrial.roundwood.coniferous.oud.clustered[length(industrial.roundwood.coniferous.oud.clustered)/4], industrial.roundwood.coniferous.oud.clustered[length(industrial.roundwood.coniferous.oud.clustered)/2],
+         industrial.roundwood.non.coniferous.non.tropical.oud.clustered[length(industrial.roundwood.non.coniferous.non.tropical.oud.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.oud.clustered[length(industrial.roundwood.non.coniferous.non.tropical.oud.clustered)/2],
+         industrial.roundwood.non.coniferous.tropical.oud.clustered[length(industrial.roundwood.non.coniferous.tropical.oud.clustered)/4], industrial.roundwood.non.coniferous.tropical.oud.clustered[length(industrial.roundwood.non.coniferous.tropical.oud.clustered)/2],
+         newsprint.oud.clustered[length(newsprint.oud.clustered)/4], newsprint.oud.clustered[length(newsprint.oud.clustered)/2],
+         paper.and.paperboard.oud.clustered[length(paper.and.paperboard.oud.clustered)/4], paper.and.paperboard.oud.clustered[length(paper.and.paperboard.oud.clustered)/2],
+         plywood.oud.clustered[length(plywood.oud.clustered)/4], plywood.oud.clustered[length(plywood.oud.clustered)/2],
+         sawnwood.coniferous.oud.clustered[length(sawnwood.coniferous.oud.clustered)/4], sawnwood.coniferous.oud.clustered[length(sawnwood.coniferous.oud.clustered)/2],
+         sawnwood.non.coniferous.oud.clustered[length(sawnwood.non.coniferous.oud.clustered)/4], sawnwood.non.coniferous.oud.clustered[length(sawnwood.non.coniferous.oud.clustered)/2],
+         veneer.sheets.oud.clustered[length(veneer.sheets.oud.clustered)/4], veneer.sheets.oud.clustered[length(veneer.sheets.oud.clustered)/2],
+         wood.chips.and.particles.oud.clustered[length(wood.chips.and.particles.oud.clustered)/4], wood.chips.and.particles.oud.clustered[length(wood.chips.and.particles.oud.clustered)/2],
+         wood.pulp.oud.clustered[length(wood.pulp.oud.clustered)/4], wood.pulp.oud.clustered[length(wood.pulp.oud.clustered)/2])
+
+clu <- c(trade.data.clu.clustered[length(trade.data.clu.clustered)/4], trade.data.clu.clustered[length(trade.data.clu.clustered)/2],
+         fibreboard.clu.clustered[length(fibreboard.clu.clustered)/4], fibreboard.clu.clustered[length(fibreboard.clu.clustered)/2],
+         industrial.roundwood.coniferous.clu.clustered[length(industrial.roundwood.coniferous.clu.clustered)/4], industrial.roundwood.coniferous.clu.clustered[length(industrial.roundwood.coniferous.clu.clustered)/2],
+         industrial.roundwood.non.coniferous.non.tropical.clu.clustered[length(industrial.roundwood.non.coniferous.non.tropical.clu.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.clu.clustered[length(industrial.roundwood.non.coniferous.non.tropical.clu.clustered)/2],
+         industrial.roundwood.non.coniferous.tropical.clu.clustered[length(industrial.roundwood.non.coniferous.tropical.clu.clustered)/4], industrial.roundwood.non.coniferous.tropical.clu.clustered[length(industrial.roundwood.non.coniferous.tropical.clu.clustered)/2],
+         newsprint.clu.clustered[length(newsprint.clu.clustered)/4], newsprint.clu.clustered[length(newsprint.clu.clustered)/2],
+         paper.and.paperboard.clu.clustered[length(paper.and.paperboard.clu.clustered)/4], paper.and.paperboard.clu.clustered[length(paper.and.paperboard.clu.clustered)/2],
+         plywood.clu.clustered[length(plywood.clu.clustered)/4], plywood.clu.clustered[length(plywood.clu.clustered)/2],
+         sawnwood.coniferous.clu.clustered[length(sawnwood.coniferous.clu.clustered)/4], sawnwood.coniferous.clu.clustered[length(sawnwood.coniferous.clu.clustered)/2],
+         sawnwood.non.coniferous.clu.clustered[length(sawnwood.non.coniferous.clu.clustered)/4], sawnwood.non.coniferous.clu.clustered[length(sawnwood.non.coniferous.clu.clustered)/2],
+         veneer.sheets.clu.clustered[length(veneer.sheets.clu.clustered)/4], veneer.sheets.clu.clustered[length(veneer.sheets.clu.clustered)/2],
+         wood.chips.and.particles.clu.clustered[length(wood.chips.and.particles.clu.clustered)/4], wood.chips.and.particles.clu.clustered[length(wood.chips.and.particles.clu.clustered)/2],
+         wood.pulp.clu.clustered[length(wood.pulp.clu.clustered)/4], wood.pulp.clu.clustered[length(wood.pulp.clu.clustered)/2])
+
+trade.zero <- as.data.frame(cbind(markets,bet,clo,eig,ind,oud,clu))
+names(trade.zero) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality', 'Eigenvector Centrality',
+                       'In Degree Centrality', 'Out Degree Centrality', 'Clustering Coefficient')
+
+write.csv(trade.zero, paste(direc, 'results/trade.csv', sep = ''), row.names = FALSE)
+
+# One year lead
+
+bet1 <- c(trade.data.btw.clustered1[length(trade.data.btw.clustered1)/4], trade.data.btw.clustered1[length(trade.data.btw.clustered1)/2],
+          fibreboard.btw.clustered1[length(fibreboard.btw.clustered1)/4], fibreboard.btw.clustered1[length(fibreboard.btw.clustered1)/2],
+          industrial.roundwood.coniferous.btw.clustered1[length(industrial.roundwood.coniferous.btw.clustered1)/4], industrial.roundwood.coniferous.btw.clustered1[length(industrial.roundwood.coniferous.btw.clustered1)/2],
+          industrial.roundwood.non.coniferous.non.tropical.btw.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.btw.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.btw.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.btw.clustered1)/2],
+          industrial.roundwood.non.coniferous.tropical.btw.clustered1[length(industrial.roundwood.non.coniferous.tropical.btw.clustered1)/4], industrial.roundwood.non.coniferous.tropical.btw.clustered1[length(industrial.roundwood.non.coniferous.tropical.btw.clustered1)/2],
+          newsprint.btw.clustered1[length(newsprint.btw.clustered1)/4], newsprint.btw.clustered1[length(newsprint.btw.clustered1)/2],
+          paper.and.paperboard.btw.clustered1[length(paper.and.paperboard.btw.clustered1)/4], paper.and.paperboard.btw.clustered1[length(paper.and.paperboard.btw.clustered1)/2],
+          plywood.btw.clustered1[length(plywood.btw.clustered1)/4], plywood.btw.clustered1[length(plywood.btw.clustered1)/2],
+          sawnwood.coniferous.btw.clustered1[length(sawnwood.coniferous.btw.clustered1)/4], sawnwood.coniferous.btw.clustered1[length(sawnwood.coniferous.btw.clustered1)/2],
+          sawnwood.non.coniferous.btw.clustered1[length(sawnwood.non.coniferous.btw.clustered1)/4], sawnwood.non.coniferous.btw.clustered1[length(sawnwood.non.coniferous.btw.clustered1)/2],
+          veneer.sheets.btw.clustered1[length(veneer.sheets.btw.clustered1)/4], veneer.sheets.btw.clustered1[length(veneer.sheets.btw.clustered1)/2],
+          wood.chips.and.particles.btw.clustered1[length(wood.chips.and.particles.btw.clustered1)/4], wood.chips.and.particles.btw.clustered1[length(wood.chips.and.particles.btw.clustered1)/2],
+          wood.pulp.btw.clustered1[length(wood.pulp.btw.clustered1)/4], wood.pulp.btw.clustered1[length(wood.pulp.btw.clustered1)/2])
+
+clo1 <- c(trade.data.clo.clustered1[length(trade.data.clo.clustered1)/4], trade.data.clo.clustered1[length(trade.data.clo.clustered1)/2],
+          fibreboard.clo.clustered1[length(fibreboard.clo.clustered1)/4], fibreboard.clo.clustered1[length(fibreboard.clo.clustered1)/2],
+          industrial.roundwood.coniferous.clo.clustered1[length(industrial.roundwood.coniferous.clo.clustered1)/4], industrial.roundwood.coniferous.clo.clustered1[length(industrial.roundwood.coniferous.clo.clustered1)/2],
+          industrial.roundwood.non.coniferous.non.tropical.clo.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.clo.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.clo.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.clo.clustered1)/2],
+          industrial.roundwood.non.coniferous.tropical.clo.clustered1[length(industrial.roundwood.non.coniferous.tropical.clo.clustered1)/4], industrial.roundwood.non.coniferous.tropical.clo.clustered1[length(industrial.roundwood.non.coniferous.tropical.clo.clustered1)/2],
+          newsprint.clo.clustered1[length(newsprint.clo.clustered1)/4], newsprint.clo.clustered1[length(newsprint.clo.clustered1)/2],
+          paper.and.paperboard.clo.clustered1[length(paper.and.paperboard.clo.clustered1)/4], paper.and.paperboard.clo.clustered1[length(paper.and.paperboard.clo.clustered1)/2],
+          plywood.clo.clustered1[length(plywood.clo.clustered1)/4], plywood.clo.clustered1[length(plywood.clo.clustered1)/2],
+          sawnwood.coniferous.clo.clustered1[length(sawnwood.coniferous.clo.clustered1)/4], sawnwood.coniferous.clo.clustered1[length(sawnwood.coniferous.clo.clustered1)/2],
+          sawnwood.non.coniferous.clo.clustered1[length(sawnwood.non.coniferous.clo.clustered1)/4], sawnwood.non.coniferous.clo.clustered1[length(sawnwood.non.coniferous.clo.clustered1)/2],
+          veneer.sheets.clo.clustered1[length(veneer.sheets.clo.clustered1)/4], veneer.sheets.clo.clustered1[length(veneer.sheets.clo.clustered1)/2],
+          wood.chips.and.particles.clo.clustered1[length(wood.chips.and.particles.clo.clustered1)/4], wood.chips.and.particles.clo.clustered1[length(wood.chips.and.particles.clo.clustered1)/2],
+          wood.pulp.clo.clustered1[length(wood.pulp.clo.clustered1)/4], wood.pulp.clo.clustered1[length(wood.pulp.clo.clustered1)/2])
+
+eig1 <- c(trade.data.eig.clustered1[length(trade.data.eig.clustered1)/4], trade.data.eig.clustered1[length(trade.data.eig.clustered1)/2],
+          fibreboard.eig.clustered1[length(fibreboard.eig.clustered1)/4], fibreboard.eig.clustered1[length(fibreboard.eig.clustered1)/2],
+          industrial.roundwood.coniferous.eig.clustered1[length(industrial.roundwood.coniferous.eig.clustered1)/4], industrial.roundwood.coniferous.eig.clustered1[length(industrial.roundwood.coniferous.eig.clustered1)/2],
+          industrial.roundwood.non.coniferous.non.tropical.eig.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.eig.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.eig.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.eig.clustered1)/2],
+          industrial.roundwood.non.coniferous.tropical.eig.clustered1[length(industrial.roundwood.non.coniferous.tropical.eig.clustered1)/4], industrial.roundwood.non.coniferous.tropical.eig.clustered1[length(industrial.roundwood.non.coniferous.tropical.eig.clustered1)/2],
+          newsprint.eig.clustered1[length(newsprint.eig.clustered1)/4], newsprint.eig.clustered1[length(newsprint.eig.clustered1)/2],
+          paper.and.paperboard.eig.clustered1[length(paper.and.paperboard.eig.clustered1)/4], paper.and.paperboard.eig.clustered1[length(paper.and.paperboard.eig.clustered1)/2],
+          plywood.eig.clustered1[length(plywood.eig.clustered1)/4], plywood.eig.clustered1[length(plywood.eig.clustered1)/2],
+          sawnwood.coniferous.eig.clustered1[length(sawnwood.coniferous.eig.clustered1)/4], sawnwood.coniferous.eig.clustered1[length(sawnwood.coniferous.eig.clustered1)/2],
+          sawnwood.non.coniferous.eig.clustered1[length(sawnwood.non.coniferous.eig.clustered1)/4], sawnwood.non.coniferous.eig.clustered1[length(sawnwood.non.coniferous.eig.clustered1)/2],
+          veneer.sheets.eig.clustered1[length(veneer.sheets.eig.clustered1)/4], veneer.sheets.eig.clustered1[length(veneer.sheets.eig.clustered1)/2],
+          wood.chips.and.particles.eig.clustered1[length(wood.chips.and.particles.eig.clustered1)/4], wood.chips.and.particles.eig.clustered1[length(wood.chips.and.particles.eig.clustered1)/2],
+          wood.pulp.eig.clustered1[length(wood.pulp.eig.clustered1)/4], wood.pulp.eig.clustered1[length(wood.pulp.eig.clustered1)/2])
+
+ind1 <- c(trade.data.ind.clustered1[length(trade.data.ind.clustered1)/4], trade.data.ind.clustered1[length(trade.data.ind.clustered1)/2],
+          fibreboard.ind.clustered1[length(fibreboard.ind.clustered1)/4], fibreboard.ind.clustered1[length(fibreboard.ind.clustered1)/2],
+          industrial.roundwood.coniferous.ind.clustered1[length(industrial.roundwood.coniferous.ind.clustered1)/4], industrial.roundwood.coniferous.ind.clustered1[length(industrial.roundwood.coniferous.ind.clustered1)/2],
+          industrial.roundwood.non.coniferous.non.tropical.ind.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.ind.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.ind.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.ind.clustered1)/2],
+          industrial.roundwood.non.coniferous.tropical.ind.clustered1[length(industrial.roundwood.non.coniferous.tropical.ind.clustered1)/4], industrial.roundwood.non.coniferous.tropical.ind.clustered1[length(industrial.roundwood.non.coniferous.tropical.ind.clustered1)/2],
+          newsprint.ind.clustered1[length(newsprint.ind.clustered1)/4], newsprint.ind.clustered1[length(newsprint.ind.clustered1)/2],
+          paper.and.paperboard.ind.clustered1[length(paper.and.paperboard.ind.clustered1)/4], paper.and.paperboard.ind.clustered1[length(paper.and.paperboard.ind.clustered1)/2],
+          plywood.ind.clustered1[length(plywood.ind.clustered1)/4], plywood.ind.clustered1[length(plywood.ind.clustered1)/2],
+          sawnwood.coniferous.ind.clustered1[length(sawnwood.coniferous.ind.clustered1)/4], sawnwood.coniferous.ind.clustered1[length(sawnwood.coniferous.ind.clustered1)/2],
+          sawnwood.non.coniferous.ind.clustered1[length(sawnwood.non.coniferous.ind.clustered1)/4], sawnwood.non.coniferous.ind.clustered1[length(sawnwood.non.coniferous.ind.clustered1)/2],
+          veneer.sheets.ind.clustered1[length(veneer.sheets.ind.clustered1)/4], veneer.sheets.ind.clustered1[length(veneer.sheets.ind.clustered1)/2],
+          wood.chips.and.particles.ind.clustered1[length(wood.chips.and.particles.ind.clustered1)/4], wood.chips.and.particles.ind.clustered1[length(wood.chips.and.particles.ind.clustered1)/2],
+          wood.pulp.ind.clustered1[length(wood.pulp.ind.clustered1)/4], wood.pulp.ind.clustered1[length(wood.pulp.ind.clustered1)/2])
+
+oud1 <- c(trade.data.oud.clustered1[length(trade.data.oud.clustered1)/4], trade.data.oud.clustered1[length(trade.data.oud.clustered1)/2],
+          fibreboard.oud.clustered1[length(fibreboard.oud.clustered1)/4], fibreboard.oud.clustered1[length(fibreboard.oud.clustered1)/2],
+          industrial.roundwood.coniferous.oud.clustered1[length(industrial.roundwood.coniferous.oud.clustered1)/4], industrial.roundwood.coniferous.oud.clustered1[length(industrial.roundwood.coniferous.oud.clustered1)/2],
+          industrial.roundwood.non.coniferous.non.tropical.oud.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.oud.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.oud.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.oud.clustered1)/2],
+          industrial.roundwood.non.coniferous.tropical.oud.clustered1[length(industrial.roundwood.non.coniferous.tropical.oud.clustered1)/4], industrial.roundwood.non.coniferous.tropical.oud.clustered1[length(industrial.roundwood.non.coniferous.tropical.oud.clustered1)/2],
+          newsprint.oud.clustered1[length(newsprint.oud.clustered1)/4], newsprint.oud.clustered1[length(newsprint.oud.clustered1)/2],
+          paper.and.paperboard.oud.clustered1[length(paper.and.paperboard.oud.clustered1)/4], paper.and.paperboard.oud.clustered1[length(paper.and.paperboard.oud.clustered1)/2],
+          plywood.oud.clustered1[length(plywood.oud.clustered1)/4], plywood.oud.clustered1[length(plywood.oud.clustered1)/2],
+          sawnwood.coniferous.oud.clustered1[length(sawnwood.coniferous.oud.clustered1)/4], sawnwood.coniferous.oud.clustered1[length(sawnwood.coniferous.oud.clustered1)/2],
+          sawnwood.non.coniferous.oud.clustered1[length(sawnwood.non.coniferous.oud.clustered1)/4], sawnwood.non.coniferous.oud.clustered1[length(sawnwood.non.coniferous.oud.clustered1)/2],
+          veneer.sheets.oud.clustered1[length(veneer.sheets.oud.clustered1)/4], veneer.sheets.oud.clustered1[length(veneer.sheets.oud.clustered1)/2],
+          wood.chips.and.particles.oud.clustered1[length(wood.chips.and.particles.oud.clustered1)/4], wood.chips.and.particles.oud.clustered1[length(wood.chips.and.particles.oud.clustered1)/2],
+          wood.pulp.oud.clustered1[length(wood.pulp.oud.clustered1)/4], wood.pulp.oud.clustered1[length(wood.pulp.oud.clustered1)/2])
+
+clu1 <- c(trade.data.clu.clustered1[length(trade.data.clu.clustered1)/4], trade.data.clu.clustered1[length(trade.data.clu.clustered1)/2],
+          fibreboard.clu.clustered1[length(fibreboard.clu.clustered1)/4], fibreboard.clu.clustered1[length(fibreboard.clu.clustered1)/2],
+          industrial.roundwood.coniferous.clu.clustered1[length(industrial.roundwood.coniferous.clu.clustered1)/4], industrial.roundwood.coniferous.clu.clustered1[length(industrial.roundwood.coniferous.clu.clustered1)/2],
+          industrial.roundwood.non.coniferous.non.tropical.clu.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.clu.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.clu.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.clu.clustered1)/2],
+          industrial.roundwood.non.coniferous.tropical.clu.clustered1[length(industrial.roundwood.non.coniferous.tropical.clu.clustered1)/4], industrial.roundwood.non.coniferous.tropical.clu.clustered1[length(industrial.roundwood.non.coniferous.tropical.clu.clustered1)/2],
+          newsprint.clu.clustered1[length(newsprint.clu.clustered1)/4], newsprint.clu.clustered1[length(newsprint.clu.clustered1)/2],
+          paper.and.paperboard.clu.clustered1[length(paper.and.paperboard.clu.clustered1)/4], paper.and.paperboard.clu.clustered1[length(paper.and.paperboard.clu.clustered1)/2],
+          plywood.clu.clustered1[length(plywood.clu.clustered1)/4], plywood.clu.clustered1[length(plywood.clu.clustered1)/2],
+          sawnwood.coniferous.clu.clustered1[length(sawnwood.coniferous.clu.clustered1)/4], sawnwood.coniferous.clu.clustered1[length(sawnwood.coniferous.clu.clustered1)/2],
+          sawnwood.non.coniferous.clu.clustered1[length(sawnwood.non.coniferous.clu.clustered1)/4], sawnwood.non.coniferous.clu.clustered1[length(sawnwood.non.coniferous.clu.clustered1)/2],
+          veneer.sheets.clu.clustered1[length(veneer.sheets.clu.clustered1)/4], veneer.sheets.clu.clustered1[length(veneer.sheets.clu.clustered1)/2],
+          wood.chips.and.particles.clu.clustered1[length(wood.chips.and.particles.clu.clustered1)/4], wood.chips.and.particles.clu.clustered1[length(wood.chips.and.particles.clu.clustered1)/2],
+          wood.pulp.clu.clustered1[length(wood.pulp.clu.clustered1)/4], wood.pulp.clu.clustered1[length(wood.pulp.clu.clustered1)/2])
+
+trade.one <- as.data.frame(cbind(markets,bet1,clo1,eig1,ind1,oud1,clu1))
+names(trade.one) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality', 'Eigenvector Centrality',
+                      'In Degree Centrality', 'Out Degree Centrality', 'Clustering Coefficient')
+
+write.csv(trade.one, paste(direc, 'results/trade_1.csv', sep = ''), row.names = FALSE)
+
+# Two year lead
+
+bet2 <- c(trade.data.btw.clustered2[length(trade.data.btw.clustered2)/4], trade.data.btw.clustered2[length(trade.data.btw.clustered2)/2],
+          fibreboard.btw.clustered2[length(fibreboard.btw.clustered2)/4], fibreboard.btw.clustered2[length(fibreboard.btw.clustered2)/2],
+          industrial.roundwood.coniferous.btw.clustered2[length(industrial.roundwood.coniferous.btw.clustered2)/4], industrial.roundwood.coniferous.btw.clustered2[length(industrial.roundwood.coniferous.btw.clustered2)/2],
+          industrial.roundwood.non.coniferous.non.tropical.btw.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.btw.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.btw.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.btw.clustered2)/2],
+          industrial.roundwood.non.coniferous.tropical.btw.clustered2[length(industrial.roundwood.non.coniferous.tropical.btw.clustered2)/4], industrial.roundwood.non.coniferous.tropical.btw.clustered2[length(industrial.roundwood.non.coniferous.tropical.btw.clustered2)/2],
+          newsprint.btw.clustered2[length(newsprint.btw.clustered2)/4], newsprint.btw.clustered2[length(newsprint.btw.clustered2)/2],
+          paper.and.paperboard.btw.clustered2[length(paper.and.paperboard.btw.clustered2)/4], paper.and.paperboard.btw.clustered2[length(paper.and.paperboard.btw.clustered2)/2],
+          plywood.btw.clustered2[length(plywood.btw.clustered2)/4], plywood.btw.clustered2[length(plywood.btw.clustered2)/2],
+          sawnwood.coniferous.btw.clustered2[length(sawnwood.coniferous.btw.clustered2)/4], sawnwood.coniferous.btw.clustered2[length(sawnwood.coniferous.btw.clustered2)/2],
+          sawnwood.non.coniferous.btw.clustered2[length(sawnwood.non.coniferous.btw.clustered2)/4], sawnwood.non.coniferous.btw.clustered2[length(sawnwood.non.coniferous.btw.clustered2)/2],
+          veneer.sheets.btw.clustered2[length(veneer.sheets.btw.clustered2)/4], veneer.sheets.btw.clustered2[length(veneer.sheets.btw.clustered2)/2],
+          wood.chips.and.particles.btw.clustered2[length(wood.chips.and.particles.btw.clustered2)/4], wood.chips.and.particles.btw.clustered2[length(wood.chips.and.particles.btw.clustered2)/2],
+          wood.pulp.btw.clustered2[length(wood.pulp.btw.clustered2)/4], wood.pulp.btw.clustered2[length(wood.pulp.btw.clustered2)/2])
+
+clo2 <- c(trade.data.clo.clustered2[length(trade.data.clo.clustered2)/4], trade.data.clo.clustered2[length(trade.data.clo.clustered2)/2],
+          fibreboard.clo.clustered2[length(fibreboard.clo.clustered2)/4], fibreboard.clo.clustered2[length(fibreboard.clo.clustered2)/2],
+          industrial.roundwood.coniferous.clo.clustered2[length(industrial.roundwood.coniferous.clo.clustered2)/4], industrial.roundwood.coniferous.clo.clustered2[length(industrial.roundwood.coniferous.clo.clustered2)/2],
+          industrial.roundwood.non.coniferous.non.tropical.clo.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.clo.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.clo.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.clo.clustered2)/2],
+          industrial.roundwood.non.coniferous.tropical.clo.clustered2[length(industrial.roundwood.non.coniferous.tropical.clo.clustered2)/4], industrial.roundwood.non.coniferous.tropical.clo.clustered2[length(industrial.roundwood.non.coniferous.tropical.clo.clustered2)/2],
+          newsprint.clo.clustered2[length(newsprint.clo.clustered2)/4], newsprint.clo.clustered2[length(newsprint.clo.clustered2)/2],
+          paper.and.paperboard.clo.clustered2[length(paper.and.paperboard.clo.clustered2)/4], paper.and.paperboard.clo.clustered2[length(paper.and.paperboard.clo.clustered2)/2],
+          plywood.clo.clustered2[length(plywood.clo.clustered2)/4], plywood.clo.clustered2[length(plywood.clo.clustered2)/2],
+          sawnwood.coniferous.clo.clustered2[length(sawnwood.coniferous.clo.clustered2)/4], sawnwood.coniferous.clo.clustered2[length(sawnwood.coniferous.clo.clustered2)/2],
+          sawnwood.non.coniferous.clo.clustered2[length(sawnwood.non.coniferous.clo.clustered2)/4], sawnwood.non.coniferous.clo.clustered2[length(sawnwood.non.coniferous.clo.clustered2)/2],
+          veneer.sheets.clo.clustered2[length(veneer.sheets.clo.clustered2)/4], veneer.sheets.clo.clustered2[length(veneer.sheets.clo.clustered2)/2],
+          wood.chips.and.particles.clo.clustered2[length(wood.chips.and.particles.clo.clustered2)/4], wood.chips.and.particles.clo.clustered2[length(wood.chips.and.particles.clo.clustered2)/2],
+          wood.pulp.clo.clustered2[length(wood.pulp.clo.clustered2)/4], wood.pulp.clo.clustered2[length(wood.pulp.clo.clustered2)/2])
+
+eig2 <- c(trade.data.eig.clustered2[length(trade.data.eig.clustered2)/4], trade.data.eig.clustered2[length(trade.data.eig.clustered2)/2],
+          fibreboard.eig.clustered2[length(fibreboard.eig.clustered2)/4], fibreboard.eig.clustered2[length(fibreboard.eig.clustered2)/2],
+          industrial.roundwood.coniferous.eig.clustered2[length(industrial.roundwood.coniferous.eig.clustered2)/4], industrial.roundwood.coniferous.eig.clustered2[length(industrial.roundwood.coniferous.eig.clustered2)/2],
+          industrial.roundwood.non.coniferous.non.tropical.eig.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.eig.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.eig.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.eig.clustered2)/2],
+          industrial.roundwood.non.coniferous.tropical.eig.clustered2[length(industrial.roundwood.non.coniferous.tropical.eig.clustered2)/4], industrial.roundwood.non.coniferous.tropical.eig.clustered2[length(industrial.roundwood.non.coniferous.tropical.eig.clustered2)/2],
+          newsprint.eig.clustered2[length(newsprint.eig.clustered2)/4], newsprint.eig.clustered2[length(newsprint.eig.clustered2)/2],
+          paper.and.paperboard.eig.clustered2[length(paper.and.paperboard.eig.clustered2)/4], paper.and.paperboard.eig.clustered2[length(paper.and.paperboard.eig.clustered2)/2],
+          plywood.eig.clustered2[length(plywood.eig.clustered2)/4], plywood.eig.clustered2[length(plywood.eig.clustered2)/2],
+          sawnwood.coniferous.eig.clustered2[length(sawnwood.coniferous.eig.clustered2)/4], sawnwood.coniferous.eig.clustered2[length(sawnwood.coniferous.eig.clustered2)/2],
+          sawnwood.non.coniferous.eig.clustered2[length(sawnwood.non.coniferous.eig.clustered2)/4], sawnwood.non.coniferous.eig.clustered2[length(sawnwood.non.coniferous.eig.clustered2)/2],
+          veneer.sheets.eig.clustered2[length(veneer.sheets.eig.clustered2)/4], veneer.sheets.eig.clustered2[length(veneer.sheets.eig.clustered2)/2],
+          wood.chips.and.particles.eig.clustered2[length(wood.chips.and.particles.eig.clustered2)/4], wood.chips.and.particles.eig.clustered2[length(wood.chips.and.particles.eig.clustered2)/2],
+          wood.pulp.eig.clustered2[length(wood.pulp.eig.clustered2)/4], wood.pulp.eig.clustered2[length(wood.pulp.eig.clustered2)/2])
+
+ind2 <- c(trade.data.ind.clustered2[length(trade.data.ind.clustered2)/4], trade.data.ind.clustered2[length(trade.data.ind.clustered2)/2],
+          fibreboard.ind.clustered2[length(fibreboard.ind.clustered2)/4], fibreboard.ind.clustered2[length(fibreboard.ind.clustered2)/2],
+          industrial.roundwood.coniferous.ind.clustered2[length(industrial.roundwood.coniferous.ind.clustered2)/4], industrial.roundwood.coniferous.ind.clustered2[length(industrial.roundwood.coniferous.ind.clustered2)/2],
+          industrial.roundwood.non.coniferous.non.tropical.ind.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.ind.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.ind.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.ind.clustered2)/2],
+          industrial.roundwood.non.coniferous.tropical.ind.clustered2[length(industrial.roundwood.non.coniferous.tropical.ind.clustered2)/4], industrial.roundwood.non.coniferous.tropical.ind.clustered2[length(industrial.roundwood.non.coniferous.tropical.ind.clustered2)/2],
+          newsprint.ind.clustered2[length(newsprint.ind.clustered2)/4], newsprint.ind.clustered2[length(newsprint.ind.clustered2)/2],
+          paper.and.paperboard.ind.clustered2[length(paper.and.paperboard.ind.clustered2)/4], paper.and.paperboard.ind.clustered2[length(paper.and.paperboard.ind.clustered2)/2],
+          plywood.ind.clustered2[length(plywood.ind.clustered2)/4], plywood.ind.clustered2[length(plywood.ind.clustered2)/2],
+          sawnwood.coniferous.ind.clustered2[length(sawnwood.coniferous.ind.clustered2)/4], sawnwood.coniferous.ind.clustered2[length(sawnwood.coniferous.ind.clustered2)/2],
+          sawnwood.non.coniferous.ind.clustered2[length(sawnwood.non.coniferous.ind.clustered2)/4], sawnwood.non.coniferous.ind.clustered2[length(sawnwood.non.coniferous.ind.clustered2)/2],
+          veneer.sheets.ind.clustered2[length(veneer.sheets.ind.clustered2)/4], veneer.sheets.ind.clustered2[length(veneer.sheets.ind.clustered2)/2],
+          wood.chips.and.particles.ind.clustered2[length(wood.chips.and.particles.ind.clustered2)/4], wood.chips.and.particles.ind.clustered2[length(wood.chips.and.particles.ind.clustered2)/2],
+          wood.pulp.ind.clustered2[length(wood.pulp.ind.clustered2)/4], wood.pulp.ind.clustered2[length(wood.pulp.ind.clustered2)/2])
+
+oud2 <- c(trade.data.oud.clustered2[length(trade.data.oud.clustered2)/4], trade.data.oud.clustered2[length(trade.data.oud.clustered2)/2],
+          fibreboard.oud.clustered2[length(fibreboard.oud.clustered2)/4], fibreboard.oud.clustered2[length(fibreboard.oud.clustered2)/2],
+          industrial.roundwood.coniferous.oud.clustered2[length(industrial.roundwood.coniferous.oud.clustered2)/4], industrial.roundwood.coniferous.oud.clustered2[length(industrial.roundwood.coniferous.oud.clustered2)/2],
+          industrial.roundwood.non.coniferous.non.tropical.oud.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.oud.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.oud.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.oud.clustered2)/2],
+          industrial.roundwood.non.coniferous.tropical.oud.clustered2[length(industrial.roundwood.non.coniferous.tropical.oud.clustered2)/4], industrial.roundwood.non.coniferous.tropical.oud.clustered2[length(industrial.roundwood.non.coniferous.tropical.oud.clustered2)/2],
+          newsprint.oud.clustered2[length(newsprint.oud.clustered2)/4], newsprint.oud.clustered2[length(newsprint.oud.clustered2)/2],
+          paper.and.paperboard.oud.clustered2[length(paper.and.paperboard.oud.clustered2)/4], paper.and.paperboard.oud.clustered2[length(paper.and.paperboard.oud.clustered2)/2],
+          plywood.oud.clustered2[length(plywood.oud.clustered2)/4], plywood.oud.clustered2[length(plywood.oud.clustered2)/2],
+          sawnwood.coniferous.oud.clustered2[length(sawnwood.coniferous.oud.clustered2)/4], sawnwood.coniferous.oud.clustered2[length(sawnwood.coniferous.oud.clustered2)/2],
+          sawnwood.non.coniferous.oud.clustered2[length(sawnwood.non.coniferous.oud.clustered2)/4], sawnwood.non.coniferous.oud.clustered2[length(sawnwood.non.coniferous.oud.clustered2)/2],
+          veneer.sheets.oud.clustered2[length(veneer.sheets.oud.clustered2)/4], veneer.sheets.oud.clustered2[length(veneer.sheets.oud.clustered2)/2],
+          wood.chips.and.particles.oud.clustered2[length(wood.chips.and.particles.oud.clustered2)/4], wood.chips.and.particles.oud.clustered2[length(wood.chips.and.particles.oud.clustered2)/2],
+          wood.pulp.oud.clustered2[length(wood.pulp.oud.clustered2)/4], wood.pulp.oud.clustered2[length(wood.pulp.oud.clustered2)/2])
+
+clu2 <- c(trade.data.clu.clustered2[length(trade.data.clu.clustered2)/4], trade.data.clu.clustered2[length(trade.data.clu.clustered2)/2],
+          fibreboard.clu.clustered2[length(fibreboard.clu.clustered2)/4], fibreboard.clu.clustered2[length(fibreboard.clu.clustered2)/2],
+          industrial.roundwood.coniferous.clu.clustered2[length(industrial.roundwood.coniferous.clu.clustered2)/4], industrial.roundwood.coniferous.clu.clustered2[length(industrial.roundwood.coniferous.clu.clustered2)/2],
+          industrial.roundwood.non.coniferous.non.tropical.clu.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.clu.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.clu.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.clu.clustered2)/2],
+          industrial.roundwood.non.coniferous.tropical.clu.clustered2[length(industrial.roundwood.non.coniferous.tropical.clu.clustered2)/4], industrial.roundwood.non.coniferous.tropical.clu.clustered2[length(industrial.roundwood.non.coniferous.tropical.clu.clustered2)/2],
+          newsprint.clu.clustered2[length(newsprint.clu.clustered2)/4], newsprint.clu.clustered2[length(newsprint.clu.clustered2)/2],
+          paper.and.paperboard.clu.clustered2[length(paper.and.paperboard.clu.clustered2)/4], paper.and.paperboard.clu.clustered2[length(paper.and.paperboard.clu.clustered2)/2],
+          plywood.clu.clustered2[length(plywood.clu.clustered2)/4], plywood.clu.clustered2[length(plywood.clu.clustered2)/2],
+          sawnwood.coniferous.clu.clustered2[length(sawnwood.coniferous.clu.clustered2)/4], sawnwood.coniferous.clu.clustered2[length(sawnwood.coniferous.clu.clustered2)/2],
+          sawnwood.non.coniferous.clu.clustered2[length(sawnwood.non.coniferous.clu.clustered2)/4], sawnwood.non.coniferous.clu.clustered2[length(sawnwood.non.coniferous.clu.clustered2)/2],
+          veneer.sheets.clu.clustered2[length(veneer.sheets.clu.clustered2)/4], veneer.sheets.clu.clustered2[length(veneer.sheets.clu.clustered2)/2],
+          wood.chips.and.particles.clu.clustered2[length(wood.chips.and.particles.clu.clustered2)/4], wood.chips.and.particles.clu.clustered2[length(wood.chips.and.particles.clu.clustered2)/2],
+          wood.pulp.clu.clustered2[length(wood.pulp.clu.clustered2)/4], wood.pulp.clu.clustered2[length(wood.pulp.clu.clustered2)/2])
+
+trade.two <- as.data.frame(cbind(markets,bet2,clo2,eig2,ind2,oud2,clu2))
+names(trade.two) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality', 'Eigenvector Centrality',
+                      'In Degree Centrality', 'Out Degree Centrality', 'Clustering Coefficient')
+
+write.csv(trade.two, paste(direc, 'results/trade_2.csv', sep = ''), row.names = FALSE)
+
+# Three year lead
+
+bet3 <- c(trade.data.btw.clustered3[length(trade.data.btw.clustered3)/4], trade.data.btw.clustered3[length(trade.data.btw.clustered3)/2],
+          fibreboard.btw.clustered3[length(fibreboard.btw.clustered3)/4], fibreboard.btw.clustered3[length(fibreboard.btw.clustered3)/2],
+          industrial.roundwood.coniferous.btw.clustered3[length(industrial.roundwood.coniferous.btw.clustered3)/4], industrial.roundwood.coniferous.btw.clustered3[length(industrial.roundwood.coniferous.btw.clustered3)/2],
+          industrial.roundwood.non.coniferous.non.tropical.btw.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.btw.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.btw.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.btw.clustered3)/2],
+          industrial.roundwood.non.coniferous.tropical.btw.clustered3[length(industrial.roundwood.non.coniferous.tropical.btw.clustered3)/4], industrial.roundwood.non.coniferous.tropical.btw.clustered3[length(industrial.roundwood.non.coniferous.tropical.btw.clustered3)/2],
+          newsprint.btw.clustered3[length(newsprint.btw.clustered3)/4], newsprint.btw.clustered3[length(newsprint.btw.clustered3)/2],
+          paper.and.paperboard.btw.clustered3[length(paper.and.paperboard.btw.clustered3)/4], paper.and.paperboard.btw.clustered3[length(paper.and.paperboard.btw.clustered3)/2],
+          plywood.btw.clustered3[length(plywood.btw.clustered3)/4], plywood.btw.clustered3[length(plywood.btw.clustered3)/2],
+          sawnwood.coniferous.btw.clustered3[length(sawnwood.coniferous.btw.clustered3)/4], sawnwood.coniferous.btw.clustered3[length(sawnwood.coniferous.btw.clustered3)/2],
+          sawnwood.non.coniferous.btw.clustered3[length(sawnwood.non.coniferous.btw.clustered3)/4], sawnwood.non.coniferous.btw.clustered3[length(sawnwood.non.coniferous.btw.clustered3)/2],
+          veneer.sheets.btw.clustered3[length(veneer.sheets.btw.clustered3)/4], veneer.sheets.btw.clustered3[length(veneer.sheets.btw.clustered3)/2],
+          wood.chips.and.particles.btw.clustered3[length(wood.chips.and.particles.btw.clustered3)/4], wood.chips.and.particles.btw.clustered3[length(wood.chips.and.particles.btw.clustered3)/2],
+          wood.pulp.btw.clustered3[length(wood.pulp.btw.clustered3)/4], wood.pulp.btw.clustered3[length(wood.pulp.btw.clustered3)/2])
+
+clo3 <- c(trade.data.clo.clustered3[length(trade.data.clo.clustered3)/4], trade.data.clo.clustered3[length(trade.data.clo.clustered3)/2],
+          fibreboard.clo.clustered3[length(fibreboard.clo.clustered3)/4], fibreboard.clo.clustered3[length(fibreboard.clo.clustered3)/2],
+          industrial.roundwood.coniferous.clo.clustered3[length(industrial.roundwood.coniferous.clo.clustered3)/4], industrial.roundwood.coniferous.clo.clustered3[length(industrial.roundwood.coniferous.clo.clustered3)/2],
+          industrial.roundwood.non.coniferous.non.tropical.clo.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.clo.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.clo.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.clo.clustered3)/2],
+          industrial.roundwood.non.coniferous.tropical.clo.clustered3[length(industrial.roundwood.non.coniferous.tropical.clo.clustered3)/4], industrial.roundwood.non.coniferous.tropical.clo.clustered3[length(industrial.roundwood.non.coniferous.tropical.clo.clustered3)/2],
+          newsprint.clo.clustered3[length(newsprint.clo.clustered3)/4], newsprint.clo.clustered3[length(newsprint.clo.clustered3)/2],
+          paper.and.paperboard.clo.clustered3[length(paper.and.paperboard.clo.clustered3)/4], paper.and.paperboard.clo.clustered3[length(paper.and.paperboard.clo.clustered3)/2],
+          plywood.clo.clustered3[length(plywood.clo.clustered3)/4], plywood.clo.clustered3[length(plywood.clo.clustered3)/2],
+          sawnwood.coniferous.clo.clustered3[length(sawnwood.coniferous.clo.clustered3)/4], sawnwood.coniferous.clo.clustered3[length(sawnwood.coniferous.clo.clustered3)/2],
+          sawnwood.non.coniferous.clo.clustered3[length(sawnwood.non.coniferous.clo.clustered3)/4], sawnwood.non.coniferous.clo.clustered3[length(sawnwood.non.coniferous.clo.clustered3)/2],
+          veneer.sheets.clo.clustered3[length(veneer.sheets.clo.clustered3)/4], veneer.sheets.clo.clustered3[length(veneer.sheets.clo.clustered3)/2],
+          wood.chips.and.particles.clo.clustered3[length(wood.chips.and.particles.clo.clustered3)/4], wood.chips.and.particles.clo.clustered3[length(wood.chips.and.particles.clo.clustered3)/2],
+          wood.pulp.clo.clustered3[length(wood.pulp.clo.clustered3)/4], wood.pulp.clo.clustered3[length(wood.pulp.clo.clustered3)/2])
+
+eig3 <- c(trade.data.eig.clustered3[length(trade.data.eig.clustered3)/4], trade.data.eig.clustered3[length(trade.data.eig.clustered3)/2],
+          fibreboard.eig.clustered3[length(fibreboard.eig.clustered3)/4], fibreboard.eig.clustered3[length(fibreboard.eig.clustered3)/2],
+          industrial.roundwood.coniferous.eig.clustered3[length(industrial.roundwood.coniferous.eig.clustered3)/4], industrial.roundwood.coniferous.eig.clustered3[length(industrial.roundwood.coniferous.eig.clustered3)/2],
+          industrial.roundwood.non.coniferous.non.tropical.eig.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.eig.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.eig.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.eig.clustered3)/2],
+          industrial.roundwood.non.coniferous.tropical.eig.clustered3[length(industrial.roundwood.non.coniferous.tropical.eig.clustered3)/4], industrial.roundwood.non.coniferous.tropical.eig.clustered3[length(industrial.roundwood.non.coniferous.tropical.eig.clustered3)/2],
+          newsprint.eig.clustered3[length(newsprint.eig.clustered3)/4], newsprint.eig.clustered3[length(newsprint.eig.clustered3)/2],
+          paper.and.paperboard.eig.clustered3[length(paper.and.paperboard.eig.clustered3)/4], paper.and.paperboard.eig.clustered3[length(paper.and.paperboard.eig.clustered3)/2],
+          plywood.eig.clustered3[length(plywood.eig.clustered3)/4], plywood.eig.clustered3[length(plywood.eig.clustered3)/2],
+          sawnwood.coniferous.eig.clustered3[length(sawnwood.coniferous.eig.clustered3)/4], sawnwood.coniferous.eig.clustered3[length(sawnwood.coniferous.eig.clustered3)/2],
+          sawnwood.non.coniferous.eig.clustered3[length(sawnwood.non.coniferous.eig.clustered3)/4], sawnwood.non.coniferous.eig.clustered3[length(sawnwood.non.coniferous.eig.clustered3)/2],
+          veneer.sheets.eig.clustered3[length(veneer.sheets.eig.clustered3)/4], veneer.sheets.eig.clustered3[length(veneer.sheets.eig.clustered3)/2],
+          wood.chips.and.particles.eig.clustered3[length(wood.chips.and.particles.eig.clustered3)/4], wood.chips.and.particles.eig.clustered3[length(wood.chips.and.particles.eig.clustered3)/2],
+          wood.pulp.eig.clustered3[length(wood.pulp.eig.clustered3)/4], wood.pulp.eig.clustered3[length(wood.pulp.eig.clustered3)/2])
+
+ind3 <- c(trade.data.ind.clustered3[length(trade.data.ind.clustered3)/4], trade.data.ind.clustered3[length(trade.data.ind.clustered3)/2],
+          fibreboard.ind.clustered3[length(fibreboard.ind.clustered3)/4], fibreboard.ind.clustered3[length(fibreboard.ind.clustered3)/2],
+          industrial.roundwood.coniferous.ind.clustered3[length(industrial.roundwood.coniferous.ind.clustered3)/4], industrial.roundwood.coniferous.ind.clustered3[length(industrial.roundwood.coniferous.ind.clustered3)/2],
+          industrial.roundwood.non.coniferous.non.tropical.ind.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.ind.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.ind.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.ind.clustered3)/2],
+          industrial.roundwood.non.coniferous.tropical.ind.clustered3[length(industrial.roundwood.non.coniferous.tropical.ind.clustered3)/4], industrial.roundwood.non.coniferous.tropical.ind.clustered3[length(industrial.roundwood.non.coniferous.tropical.ind.clustered3)/2],
+          newsprint.ind.clustered3[length(newsprint.ind.clustered3)/4], newsprint.ind.clustered3[length(newsprint.ind.clustered3)/2],
+          paper.and.paperboard.ind.clustered3[length(paper.and.paperboard.ind.clustered3)/4], paper.and.paperboard.ind.clustered3[length(paper.and.paperboard.ind.clustered3)/2],
+          plywood.ind.clustered3[length(plywood.ind.clustered3)/4], plywood.ind.clustered3[length(plywood.ind.clustered3)/2],
+          sawnwood.coniferous.ind.clustered3[length(sawnwood.coniferous.ind.clustered3)/4], sawnwood.coniferous.ind.clustered3[length(sawnwood.coniferous.ind.clustered3)/2],
+          sawnwood.non.coniferous.ind.clustered3[length(sawnwood.non.coniferous.ind.clustered3)/4], sawnwood.non.coniferous.ind.clustered3[length(sawnwood.non.coniferous.ind.clustered3)/2],
+          veneer.sheets.ind.clustered3[length(veneer.sheets.ind.clustered3)/4], veneer.sheets.ind.clustered3[length(veneer.sheets.ind.clustered3)/2],
+          wood.chips.and.particles.ind.clustered3[length(wood.chips.and.particles.ind.clustered3)/4], wood.chips.and.particles.ind.clustered3[length(wood.chips.and.particles.ind.clustered3)/2],
+          wood.pulp.ind.clustered3[length(wood.pulp.ind.clustered3)/4], wood.pulp.ind.clustered3[length(wood.pulp.ind.clustered3)/2])
+
+oud3 <- c(trade.data.oud.clustered3[length(trade.data.oud.clustered3)/4], trade.data.oud.clustered3[length(trade.data.oud.clustered3)/2],
+          fibreboard.oud.clustered3[length(fibreboard.oud.clustered3)/4], fibreboard.oud.clustered3[length(fibreboard.oud.clustered3)/2],
+          industrial.roundwood.coniferous.oud.clustered3[length(industrial.roundwood.coniferous.oud.clustered3)/4], industrial.roundwood.coniferous.oud.clustered3[length(industrial.roundwood.coniferous.oud.clustered3)/2],
+          industrial.roundwood.non.coniferous.non.tropical.oud.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.oud.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.oud.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.oud.clustered3)/2],
+          industrial.roundwood.non.coniferous.tropical.oud.clustered3[length(industrial.roundwood.non.coniferous.tropical.oud.clustered3)/4], industrial.roundwood.non.coniferous.tropical.oud.clustered3[length(industrial.roundwood.non.coniferous.tropical.oud.clustered3)/2],
+          newsprint.oud.clustered3[length(newsprint.oud.clustered3)/4], newsprint.oud.clustered3[length(newsprint.oud.clustered3)/2],
+          paper.and.paperboard.oud.clustered3[length(paper.and.paperboard.oud.clustered3)/4], paper.and.paperboard.oud.clustered3[length(paper.and.paperboard.oud.clustered3)/2],
+          plywood.oud.clustered3[length(plywood.oud.clustered3)/4], plywood.oud.clustered3[length(plywood.oud.clustered3)/2],
+          sawnwood.coniferous.oud.clustered3[length(sawnwood.coniferous.oud.clustered3)/4], sawnwood.coniferous.oud.clustered3[length(sawnwood.coniferous.oud.clustered3)/2],
+          sawnwood.non.coniferous.oud.clustered3[length(sawnwood.non.coniferous.oud.clustered3)/4], sawnwood.non.coniferous.oud.clustered3[length(sawnwood.non.coniferous.oud.clustered3)/2],
+          veneer.sheets.oud.clustered3[length(veneer.sheets.oud.clustered3)/4], veneer.sheets.oud.clustered3[length(veneer.sheets.oud.clustered3)/2],
+          wood.chips.and.particles.oud.clustered3[length(wood.chips.and.particles.oud.clustered3)/4], wood.chips.and.particles.oud.clustered3[length(wood.chips.and.particles.oud.clustered3)/2],
+          wood.pulp.oud.clustered3[length(wood.pulp.oud.clustered3)/4], wood.pulp.oud.clustered3[length(wood.pulp.oud.clustered3)/2])
+
+clu3 <- c(trade.data.clu.clustered3[length(trade.data.clu.clustered3)/4], trade.data.clu.clustered3[length(trade.data.clu.clustered3)/2],
+          fibreboard.clu.clustered3[length(fibreboard.clu.clustered3)/4], fibreboard.clu.clustered3[length(fibreboard.clu.clustered3)/2],
+          industrial.roundwood.coniferous.clu.clustered3[length(industrial.roundwood.coniferous.clu.clustered3)/4], industrial.roundwood.coniferous.clu.clustered3[length(industrial.roundwood.coniferous.clu.clustered3)/2],
+          industrial.roundwood.non.coniferous.non.tropical.clu.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.clu.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.clu.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.clu.clustered3)/2],
+          industrial.roundwood.non.coniferous.tropical.clu.clustered3[length(industrial.roundwood.non.coniferous.tropical.clu.clustered3)/4], industrial.roundwood.non.coniferous.tropical.clu.clustered3[length(industrial.roundwood.non.coniferous.tropical.clu.clustered3)/2],
+          newsprint.clu.clustered3[length(newsprint.clu.clustered3)/4], newsprint.clu.clustered3[length(newsprint.clu.clustered3)/2],
+          paper.and.paperboard.clu.clustered3[length(paper.and.paperboard.clu.clustered3)/4], paper.and.paperboard.clu.clustered3[length(paper.and.paperboard.clu.clustered3)/2],
+          plywood.clu.clustered3[length(plywood.clu.clustered3)/4], plywood.clu.clustered3[length(plywood.clu.clustered3)/2],
+          sawnwood.coniferous.clu.clustered3[length(sawnwood.coniferous.clu.clustered3)/4], sawnwood.coniferous.clu.clustered3[length(sawnwood.coniferous.clu.clustered3)/2],
+          sawnwood.non.coniferous.clu.clustered3[length(sawnwood.non.coniferous.clu.clustered3)/4], sawnwood.non.coniferous.clu.clustered3[length(sawnwood.non.coniferous.clu.clustered3)/2],
+          veneer.sheets.clu.clustered3[length(veneer.sheets.clu.clustered3)/4], veneer.sheets.clu.clustered3[length(veneer.sheets.clu.clustered3)/2],
+          wood.chips.and.particles.clu.clustered3[length(wood.chips.and.particles.clu.clustered3)/4], wood.chips.and.particles.clu.clustered3[length(wood.chips.and.particles.clu.clustered3)/2],
+          wood.pulp.clu.clustered3[length(wood.pulp.clu.clustered3)/4], wood.pulp.clu.clustered3[length(wood.pulp.clu.clustered3)/2])
+
+trade.three <- as.data.frame(cbind(markets,bet3,clo3,eig3,ind3,oud3,clu3))
+names(trade.three) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality', 'Eigenvector Centrality',
+                        'In Degree Centrality', 'Out Degree Centrality', 'Clustering Coefficient')
+
+write.csv(trade.three, paste(direc, 'results/trade_3.csv', sep = ''), row.names = FALSE)
+
+# Competition Tables
+
+# Zero lead
+
+betC <- c(trade.data.btwC.clustered[length(trade.data.btwC.clustered)/4], trade.data.btwC.clustered[length(trade.data.btwC.clustered)/2],
+          fibreboard.btwC.clustered[length(fibreboard.btwC.clustered)/4], fibreboard.btwC.clustered[length(fibreboard.btwC.clustered)/2],
+          industrial.roundwood.coniferous.btwC.clustered[length(industrial.roundwood.coniferous.btwC.clustered)/4], industrial.roundwood.coniferous.btwC.clustered[length(industrial.roundwood.coniferous.btwC.clustered)/2],
+          industrial.roundwood.non.coniferous.non.tropical.btwC.clustered[length(industrial.roundwood.non.coniferous.non.tropical.btwC.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.btwC.clustered[length(industrial.roundwood.non.coniferous.non.tropical.btwC.clustered)/2],
+          industrial.roundwood.non.coniferous.tropical.btwC.clustered[length(industrial.roundwood.non.coniferous.tropical.btwC.clustered)/4], industrial.roundwood.non.coniferous.tropical.btwC.clustered[length(industrial.roundwood.non.coniferous.tropical.btwC.clustered)/2],
+          newsprint.btwC.clustered[length(newsprint.btwC.clustered)/4], newsprint.btwC.clustered[length(newsprint.btwC.clustered)/2],
+          paper.and.paperboard.btwC.clustered[length(paper.and.paperboard.btwC.clustered)/4], paper.and.paperboard.btwC.clustered[length(paper.and.paperboard.btwC.clustered)/2],
+          plywood.btwC.clustered[length(plywood.btwC.clustered)/4], plywood.btwC.clustered[length(plywood.btwC.clustered)/2],
+          sawnwood.coniferous.btwC.clustered[length(sawnwood.coniferous.btwC.clustered)/4], sawnwood.coniferous.btwC.clustered[length(sawnwood.coniferous.btwC.clustered)/2],
+          sawnwood.non.coniferous.btwC.clustered[length(sawnwood.non.coniferous.btwC.clustered)/4], sawnwood.non.coniferous.btwC.clustered[length(sawnwood.non.coniferous.btwC.clustered)/2],
+          veneer.sheets.btwC.clustered[length(veneer.sheets.btwC.clustered)/4], veneer.sheets.btwC.clustered[length(veneer.sheets.btwC.clustered)/2],
+          wood.chips.and.particles.btwC.clustered[length(wood.chips.and.particles.btwC.clustered)/4], wood.chips.and.particles.btwC.clustered[length(wood.chips.and.particles.btwC.clustered)/2],
+          wood.pulp.btwC.clustered[length(wood.pulp.btwC.clustered)/4], wood.pulp.btwC.clustered[length(wood.pulp.btwC.clustered)/2])
+
+cloC <- c(trade.data.cloC.clustered[length(trade.data.cloC.clustered)/4], trade.data.cloC.clustered[length(trade.data.cloC.clustered)/2],
+          fibreboard.cloC.clustered[length(fibreboard.cloC.clustered)/4], fibreboard.cloC.clustered[length(fibreboard.cloC.clustered)/2],
+          industrial.roundwood.coniferous.cloC.clustered[length(industrial.roundwood.coniferous.cloC.clustered)/4], industrial.roundwood.coniferous.cloC.clustered[length(industrial.roundwood.coniferous.cloC.clustered)/2],
+          industrial.roundwood.non.coniferous.non.tropical.cloC.clustered[length(industrial.roundwood.non.coniferous.non.tropical.cloC.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.cloC.clustered[length(industrial.roundwood.non.coniferous.non.tropical.cloC.clustered)/2],
+          industrial.roundwood.non.coniferous.tropical.cloC.clustered[length(industrial.roundwood.non.coniferous.tropical.cloC.clustered)/4], industrial.roundwood.non.coniferous.tropical.cloC.clustered[length(industrial.roundwood.non.coniferous.tropical.cloC.clustered)/2],
+          newsprint.cloC.clustered[length(newsprint.cloC.clustered)/4], newsprint.cloC.clustered[length(newsprint.cloC.clustered)/2],
+          paper.and.paperboard.cloC.clustered[length(paper.and.paperboard.cloC.clustered)/4], paper.and.paperboard.cloC.clustered[length(paper.and.paperboard.cloC.clustered)/2],
+          plywood.cloC.clustered[length(plywood.cloC.clustered)/4], plywood.cloC.clustered[length(plywood.cloC.clustered)/2],
+          sawnwood.coniferous.cloC.clustered[length(sawnwood.coniferous.cloC.clustered)/4], sawnwood.coniferous.cloC.clustered[length(sawnwood.coniferous.cloC.clustered)/2],
+          sawnwood.non.coniferous.cloC.clustered[length(sawnwood.non.coniferous.cloC.clustered)/4], sawnwood.non.coniferous.cloC.clustered[length(sawnwood.non.coniferous.cloC.clustered)/2],
+          veneer.sheets.cloC.clustered[length(veneer.sheets.cloC.clustered)/4], veneer.sheets.cloC.clustered[length(veneer.sheets.cloC.clustered)/2],
+          wood.chips.and.particles.cloC.clustered[length(wood.chips.and.particles.cloC.clustered)/4], wood.chips.and.particles.cloC.clustered[length(wood.chips.and.particles.cloC.clustered)/2],
+          wood.pulp.cloC.clustered[length(wood.pulp.cloC.clustered)/4], wood.pulp.cloC.clustered[length(wood.pulp.cloC.clustered)/2])
+
+eigC <- c(trade.data.eigC.clustered[length(trade.data.eigC.clustered)/4], trade.data.eigC.clustered[length(trade.data.eigC.clustered)/2],
+          fibreboard.eigC.clustered[length(fibreboard.eigC.clustered)/4], fibreboard.eigC.clustered[length(fibreboard.eigC.clustered)/2],
+          industrial.roundwood.coniferous.eigC.clustered[length(industrial.roundwood.coniferous.eigC.clustered)/4], industrial.roundwood.coniferous.eigC.clustered[length(industrial.roundwood.coniferous.eigC.clustered)/2],
+          industrial.roundwood.non.coniferous.non.tropical.eigC.clustered[length(industrial.roundwood.non.coniferous.non.tropical.eigC.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.eigC.clustered[length(industrial.roundwood.non.coniferous.non.tropical.eigC.clustered)/2],
+          industrial.roundwood.non.coniferous.tropical.eigC.clustered[length(industrial.roundwood.non.coniferous.tropical.eigC.clustered)/4], industrial.roundwood.non.coniferous.tropical.eigC.clustered[length(industrial.roundwood.non.coniferous.tropical.eigC.clustered)/2],
+          newsprint.eigC.clustered[length(newsprint.eigC.clustered)/4], newsprint.eigC.clustered[length(newsprint.eigC.clustered)/2],
+          paper.and.paperboard.eigC.clustered[length(paper.and.paperboard.eigC.clustered)/4], paper.and.paperboard.eigC.clustered[length(paper.and.paperboard.eigC.clustered)/2],
+          plywood.eigC.clustered[length(plywood.eigC.clustered)/4], plywood.eigC.clustered[length(plywood.eigC.clustered)/2],
+          sawnwood.coniferous.eigC.clustered[length(sawnwood.coniferous.eigC.clustered)/4], sawnwood.coniferous.eigC.clustered[length(sawnwood.coniferous.eigC.clustered)/2],
+          sawnwood.non.coniferous.eigC.clustered[length(sawnwood.non.coniferous.eigC.clustered)/4], sawnwood.non.coniferous.eigC.clustered[length(sawnwood.non.coniferous.eigC.clustered)/2],
+          veneer.sheets.eigC.clustered[length(veneer.sheets.eigC.clustered)/4], veneer.sheets.eigC.clustered[length(veneer.sheets.eigC.clustered)/2],
+          wood.chips.and.particles.eigC.clustered[length(wood.chips.and.particles.eigC.clustered)/4], wood.chips.and.particles.eigC.clustered[length(wood.chips.and.particles.eigC.clustered)/2],
+          wood.pulp.eigC.clustered[length(wood.pulp.eigC.clustered)/4], wood.pulp.eigC.clustered[length(wood.pulp.eigC.clustered)/2])
+
+cluC <- c(trade.data.cluC.clustered[length(trade.data.cluC.clustered)/4], trade.data.cluC.clustered[length(trade.data.cluC.clustered)/2],
+          fibreboard.cluC.clustered[length(fibreboard.cluC.clustered)/4], fibreboard.cluC.clustered[length(fibreboard.cluC.clustered)/2],
+          industrial.roundwood.coniferous.cluC.clustered[length(industrial.roundwood.coniferous.cluC.clustered)/4], industrial.roundwood.coniferous.cluC.clustered[length(industrial.roundwood.coniferous.cluC.clustered)/2],
+          industrial.roundwood.non.coniferous.non.tropical.cluC.clustered[length(industrial.roundwood.non.coniferous.non.tropical.cluC.clustered)/4], industrial.roundwood.non.coniferous.non.tropical.cluC.clustered[length(industrial.roundwood.non.coniferous.non.tropical.cluC.clustered)/2],
+          industrial.roundwood.non.coniferous.tropical.cluC.clustered[length(industrial.roundwood.non.coniferous.tropical.cluC.clustered)/4], industrial.roundwood.non.coniferous.tropical.cluC.clustered[length(industrial.roundwood.non.coniferous.tropical.cluC.clustered)/2],
+          newsprint.cluC.clustered[length(newsprint.cluC.clustered)/4], newsprint.cluC.clustered[length(newsprint.cluC.clustered)/2],
+          paper.and.paperboard.cluC.clustered[length(paper.and.paperboard.cluC.clustered)/4], paper.and.paperboard.cluC.clustered[length(paper.and.paperboard.cluC.clustered)/2],
+          plywood.cluC.clustered[length(plywood.cluC.clustered)/4], plywood.cluC.clustered[length(plywood.cluC.clustered)/2],
+          sawnwood.coniferous.cluC.clustered[length(sawnwood.coniferous.cluC.clustered)/4], sawnwood.coniferous.cluC.clustered[length(sawnwood.coniferous.cluC.clustered)/2],
+          sawnwood.non.coniferous.cluC.clustered[length(sawnwood.non.coniferous.cluC.clustered)/4], sawnwood.non.coniferous.cluC.clustered[length(sawnwood.non.coniferous.cluC.clustered)/2],
+          veneer.sheets.cluC.clustered[length(veneer.sheets.cluC.clustered)/4], veneer.sheets.cluC.clustered[length(veneer.sheets.cluC.clustered)/2],
+          wood.chips.and.particles.cluC.clustered[length(wood.chips.and.particles.cluC.clustered)/4], wood.chips.and.particles.cluC.clustered[length(wood.chips.and.particles.cluC.clustered)/2],
+          wood.pulp.cluC.clustered[length(wood.pulp.cluC.clustered)/4], wood.pulp.cluC.clustered[length(wood.pulp.cluC.clustered)/2])
+
+comp.zero <- as.data.frame(cbind(markets,betC,cloC,eigC,cluC))
+names(comp.zero) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality', 'Eigenvector Centrality', 'Clustering Coefficient')
+
+write.csv(comp.zero, paste(direc, 'results/competition.csv', sep = ''), row.names = FALSE)
+
+# One year lead
+
+betC1 <- c(trade.data.btwC.clustered1[length(trade.data.btwC.clustered1)/4], trade.data.btwC.clustered1[length(trade.data.btwC.clustered1)/2],
+           fibreboard.btwC.clustered1[length(fibreboard.btwC.clustered1)/4], fibreboard.btwC.clustered1[length(fibreboard.btwC.clustered1)/2],
+           industrial.roundwood.coniferous.btwC.clustered1[length(industrial.roundwood.coniferous.btwC.clustered1)/4], industrial.roundwood.coniferous.btwC.clustered1[length(industrial.roundwood.coniferous.btwC.clustered1)/2],
+           industrial.roundwood.non.coniferous.non.tropical.btwC.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.btwC.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.btwC.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.btwC.clustered1)/2],
+           industrial.roundwood.non.coniferous.tropical.btwC.clustered1[length(industrial.roundwood.non.coniferous.tropical.btwC.clustered1)/4], industrial.roundwood.non.coniferous.tropical.btwC.clustered1[length(industrial.roundwood.non.coniferous.tropical.btwC.clustered1)/2],
+           newsprint.btwC.clustered1[length(newsprint.btwC.clustered1)/4], newsprint.btwC.clustered1[length(newsprint.btwC.clustered1)/2],
+           paper.and.paperboard.btwC.clustered1[length(paper.and.paperboard.btwC.clustered1)/4], paper.and.paperboard.btwC.clustered1[length(paper.and.paperboard.btwC.clustered1)/2],
+           plywood.btwC.clustered1[length(plywood.btwC.clustered1)/4], plywood.btwC.clustered1[length(plywood.btwC.clustered1)/2],
+           sawnwood.coniferous.btwC.clustered1[length(sawnwood.coniferous.btwC.clustered1)/4], sawnwood.coniferous.btwC.clustered1[length(sawnwood.coniferous.btwC.clustered1)/2],
+           sawnwood.non.coniferous.btwC.clustered1[length(sawnwood.non.coniferous.btwC.clustered1)/4], sawnwood.non.coniferous.btwC.clustered1[length(sawnwood.non.coniferous.btwC.clustered1)/2],
+           veneer.sheets.btwC.clustered1[length(veneer.sheets.btwC.clustered1)/4], veneer.sheets.btwC.clustered1[length(veneer.sheets.btwC.clustered1)/2],
+           wood.chips.and.particles.btwC.clustered1[length(wood.chips.and.particles.btwC.clustered1)/4], wood.chips.and.particles.btwC.clustered1[length(wood.chips.and.particles.btwC.clustered1)/2],
+           wood.pulp.btwC.clustered1[length(wood.pulp.btwC.clustered1)/4], wood.pulp.btwC.clustered1[length(wood.pulp.btwC.clustered1)/2])
+
+cloC1 <- c(trade.data.cloC.clustered1[length(trade.data.cloC.clustered1)/4], trade.data.cloC.clustered1[length(trade.data.cloC.clustered1)/2],
+           fibreboard.cloC.clustered1[length(fibreboard.cloC.clustered1)/4], fibreboard.cloC.clustered1[length(fibreboard.cloC.clustered1)/2],
+           industrial.roundwood.coniferous.cloC.clustered1[length(industrial.roundwood.coniferous.cloC.clustered1)/4], industrial.roundwood.coniferous.cloC.clustered1[length(industrial.roundwood.coniferous.cloC.clustered1)/2],
+           industrial.roundwood.non.coniferous.non.tropical.cloC.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.cloC.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.cloC.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.cloC.clustered1)/2],
+           industrial.roundwood.non.coniferous.tropical.cloC.clustered1[length(industrial.roundwood.non.coniferous.tropical.cloC.clustered1)/4], industrial.roundwood.non.coniferous.tropical.cloC.clustered1[length(industrial.roundwood.non.coniferous.tropical.cloC.clustered1)/2],
+           newsprint.cloC.clustered1[length(newsprint.cloC.clustered1)/4], newsprint.cloC.clustered1[length(newsprint.cloC.clustered1)/2],
+           paper.and.paperboard.cloC.clustered1[length(paper.and.paperboard.cloC.clustered1)/4], paper.and.paperboard.cloC.clustered1[length(paper.and.paperboard.cloC.clustered1)/2],
+           plywood.cloC.clustered1[length(plywood.cloC.clustered1)/4], plywood.cloC.clustered1[length(plywood.cloC.clustered1)/2],
+           sawnwood.coniferous.cloC.clustered1[length(sawnwood.coniferous.cloC.clustered1)/4], sawnwood.coniferous.cloC.clustered1[length(sawnwood.coniferous.cloC.clustered1)/2],
+           sawnwood.non.coniferous.cloC.clustered1[length(sawnwood.non.coniferous.cloC.clustered1)/4], sawnwood.non.coniferous.cloC.clustered1[length(sawnwood.non.coniferous.cloC.clustered1)/2],
+           veneer.sheets.cloC.clustered1[length(veneer.sheets.cloC.clustered1)/4], veneer.sheets.cloC.clustered1[length(veneer.sheets.cloC.clustered1)/2],
+           wood.chips.and.particles.cloC.clustered1[length(wood.chips.and.particles.cloC.clustered1)/4], wood.chips.and.particles.cloC.clustered1[length(wood.chips.and.particles.cloC.clustered1)/2],
+           wood.pulp.cloC.clustered1[length(wood.pulp.cloC.clustered1)/4], wood.pulp.cloC.clustered1[length(wood.pulp.cloC.clustered1)/2])
+
+eigC1 <- c(trade.data.eigC.clustered1[length(trade.data.eigC.clustered1)/4], trade.data.eigC.clustered1[length(trade.data.eigC.clustered1)/2],
+           fibreboard.eigC.clustered1[length(fibreboard.eigC.clustered1)/4], fibreboard.eigC.clustered1[length(fibreboard.eigC.clustered1)/2],
+           industrial.roundwood.coniferous.eigC.clustered1[length(industrial.roundwood.coniferous.eigC.clustered1)/4], industrial.roundwood.coniferous.eigC.clustered1[length(industrial.roundwood.coniferous.eigC.clustered1)/2],
+           industrial.roundwood.non.coniferous.non.tropical.eigC.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.eigC.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.eigC.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.eigC.clustered1)/2],
+           industrial.roundwood.non.coniferous.tropical.eigC.clustered1[length(industrial.roundwood.non.coniferous.tropical.eigC.clustered1)/4], industrial.roundwood.non.coniferous.tropical.eigC.clustered1[length(industrial.roundwood.non.coniferous.tropical.eigC.clustered1)/2],
+           newsprint.eigC.clustered1[length(newsprint.eigC.clustered1)/4], newsprint.eigC.clustered1[length(newsprint.eigC.clustered1)/2],
+           paper.and.paperboard.eigC.clustered1[length(paper.and.paperboard.eigC.clustered1)/4], paper.and.paperboard.eigC.clustered1[length(paper.and.paperboard.eigC.clustered1)/2],
+           plywood.eigC.clustered1[length(plywood.eigC.clustered1)/4], plywood.eigC.clustered1[length(plywood.eigC.clustered1)/2],
+           sawnwood.coniferous.eigC.clustered1[length(sawnwood.coniferous.eigC.clustered1)/4], sawnwood.coniferous.eigC.clustered1[length(sawnwood.coniferous.eigC.clustered1)/2],
+           sawnwood.non.coniferous.eigC.clustered1[length(sawnwood.non.coniferous.eigC.clustered1)/4], sawnwood.non.coniferous.eigC.clustered1[length(sawnwood.non.coniferous.eigC.clustered1)/2],
+           veneer.sheets.eigC.clustered1[length(veneer.sheets.eigC.clustered1)/4], veneer.sheets.eigC.clustered1[length(veneer.sheets.eigC.clustered1)/2],
+           wood.chips.and.particles.eigC.clustered1[length(wood.chips.and.particles.eigC.clustered1)/4], wood.chips.and.particles.eigC.clustered1[length(wood.chips.and.particles.eigC.clustered1)/2],
+           wood.pulp.eigC.clustered1[length(wood.pulp.eigC.clustered1)/4], wood.pulp.eigC.clustered1[length(wood.pulp.eigC.clustered1)/2])
+
+cluC1 <- c(trade.data.cluC.clustered1[length(trade.data.cluC.clustered1)/4], trade.data.cluC.clustered1[length(trade.data.cluC.clustered1)/2],
+           fibreboard.cluC.clustered1[length(fibreboard.cluC.clustered1)/4], fibreboard.cluC.clustered1[length(fibreboard.cluC.clustered1)/2],
+           industrial.roundwood.coniferous.cluC.clustered1[length(industrial.roundwood.coniferous.cluC.clustered1)/4], industrial.roundwood.coniferous.cluC.clustered1[length(industrial.roundwood.coniferous.cluC.clustered1)/2],
+           industrial.roundwood.non.coniferous.non.tropical.cluC.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.cluC.clustered1)/4], industrial.roundwood.non.coniferous.non.tropical.cluC.clustered1[length(industrial.roundwood.non.coniferous.non.tropical.cluC.clustered1)/2],
+           industrial.roundwood.non.coniferous.tropical.cluC.clustered1[length(industrial.roundwood.non.coniferous.tropical.cluC.clustered1)/4], industrial.roundwood.non.coniferous.tropical.cluC.clustered1[length(industrial.roundwood.non.coniferous.tropical.cluC.clustered1)/2],
+           newsprint.cluC.clustered1[length(newsprint.cluC.clustered1)/4], newsprint.cluC.clustered1[length(newsprint.cluC.clustered1)/2],
+           paper.and.paperboard.cluC.clustered1[length(paper.and.paperboard.cluC.clustered1)/4], paper.and.paperboard.cluC.clustered1[length(paper.and.paperboard.cluC.clustered1)/2],
+           plywood.cluC.clustered1[length(plywood.cluC.clustered1)/4], plywood.cluC.clustered1[length(plywood.cluC.clustered1)/2],
+           sawnwood.coniferous.cluC.clustered1[length(sawnwood.coniferous.cluC.clustered1)/4], sawnwood.coniferous.cluC.clustered1[length(sawnwood.coniferous.cluC.clustered1)/2],
+           sawnwood.non.coniferous.cluC.clustered1[length(sawnwood.non.coniferous.cluC.clustered1)/4], sawnwood.non.coniferous.cluC.clustered1[length(sawnwood.non.coniferous.cluC.clustered1)/2],
+           veneer.sheets.cluC.clustered1[length(veneer.sheets.cluC.clustered1)/4], veneer.sheets.cluC.clustered1[length(veneer.sheets.cluC.clustered1)/2],
+           wood.chips.and.particles.cluC.clustered1[length(wood.chips.and.particles.cluC.clustered1)/4], wood.chips.and.particles.cluC.clustered1[length(wood.chips.and.particles.cluC.clustered1)/2],
+           wood.pulp.cluC.clustered1[length(wood.pulp.cluC.clustered1)/4], wood.pulp.cluC.clustered1[length(wood.pulp.cluC.clustered1)/2])
+
+comp.one <- as.data.frame(cbind(markets,betC1,cloC1,eigC1,cluC1))
+names(comp.one) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality', 'Eigenvector Centrality', 'Clustering Coefficient')
+
+write.csv(comp.one, paste(direc, 'results/competition_1.csv', sep = ''), row.names = FALSE)
+
+# Two year lead
+
+betC2 <- c(trade.data.btwC.clustered2[length(trade.data.btwC.clustered2)/4], trade.data.btwC.clustered2[length(trade.data.btwC.clustered2)/2],
+           fibreboard.btwC.clustered2[length(fibreboard.btwC.clustered2)/4], fibreboard.btwC.clustered2[length(fibreboard.btwC.clustered2)/2],
+           industrial.roundwood.coniferous.btwC.clustered2[length(industrial.roundwood.coniferous.btwC.clustered2)/4], industrial.roundwood.coniferous.btwC.clustered2[length(industrial.roundwood.coniferous.btwC.clustered2)/2],
+           industrial.roundwood.non.coniferous.non.tropical.btwC.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.btwC.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.btwC.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.btwC.clustered2)/2],
+           industrial.roundwood.non.coniferous.tropical.btwC.clustered2[length(industrial.roundwood.non.coniferous.tropical.btwC.clustered2)/4], industrial.roundwood.non.coniferous.tropical.btwC.clustered2[length(industrial.roundwood.non.coniferous.tropical.btwC.clustered2)/2],
+           newsprint.btwC.clustered2[length(newsprint.btwC.clustered2)/4], newsprint.btwC.clustered2[length(newsprint.btwC.clustered2)/2],
+           paper.and.paperboard.btwC.clustered2[length(paper.and.paperboard.btwC.clustered2)/4], paper.and.paperboard.btwC.clustered2[length(paper.and.paperboard.btwC.clustered2)/2],
+           plywood.btwC.clustered2[length(plywood.btwC.clustered2)/4], plywood.btwC.clustered2[length(plywood.btwC.clustered2)/2],
+           sawnwood.coniferous.btwC.clustered2[length(sawnwood.coniferous.btwC.clustered2)/4], sawnwood.coniferous.btwC.clustered2[length(sawnwood.coniferous.btwC.clustered2)/2],
+           sawnwood.non.coniferous.btwC.clustered2[length(sawnwood.non.coniferous.btwC.clustered2)/4], sawnwood.non.coniferous.btwC.clustered2[length(sawnwood.non.coniferous.btwC.clustered2)/2],
+           veneer.sheets.btwC.clustered2[length(veneer.sheets.btwC.clustered2)/4], veneer.sheets.btwC.clustered2[length(veneer.sheets.btwC.clustered2)/2],
+           wood.chips.and.particles.btwC.clustered2[length(wood.chips.and.particles.btwC.clustered2)/4], wood.chips.and.particles.btwC.clustered2[length(wood.chips.and.particles.btwC.clustered2)/2],
+           wood.pulp.btwC.clustered2[length(wood.pulp.btwC.clustered2)/4], wood.pulp.btwC.clustered2[length(wood.pulp.btwC.clustered2)/2])
+
+cloC2 <- c(trade.data.cloC.clustered2[length(trade.data.cloC.clustered2)/4], trade.data.cloC.clustered2[length(trade.data.cloC.clustered2)/2],
+           fibreboard.cloC.clustered2[length(fibreboard.cloC.clustered2)/4], fibreboard.cloC.clustered2[length(fibreboard.cloC.clustered2)/2],
+           industrial.roundwood.coniferous.cloC.clustered2[length(industrial.roundwood.coniferous.cloC.clustered2)/4], industrial.roundwood.coniferous.cloC.clustered2[length(industrial.roundwood.coniferous.cloC.clustered2)/2],
+           industrial.roundwood.non.coniferous.non.tropical.cloC.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.cloC.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.cloC.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.cloC.clustered2)/2],
+           industrial.roundwood.non.coniferous.tropical.cloC.clustered2[length(industrial.roundwood.non.coniferous.tropical.cloC.clustered2)/4], industrial.roundwood.non.coniferous.tropical.cloC.clustered2[length(industrial.roundwood.non.coniferous.tropical.cloC.clustered2)/2],
+           newsprint.cloC.clustered2[length(newsprint.cloC.clustered2)/4], newsprint.cloC.clustered2[length(newsprint.cloC.clustered2)/2],
+           paper.and.paperboard.cloC.clustered2[length(paper.and.paperboard.cloC.clustered2)/4], paper.and.paperboard.cloC.clustered2[length(paper.and.paperboard.cloC.clustered2)/2],
+           plywood.cloC.clustered2[length(plywood.cloC.clustered2)/4], plywood.cloC.clustered2[length(plywood.cloC.clustered2)/2],
+           sawnwood.coniferous.cloC.clustered2[length(sawnwood.coniferous.cloC.clustered2)/4], sawnwood.coniferous.cloC.clustered2[length(sawnwood.coniferous.cloC.clustered2)/2],
+           sawnwood.non.coniferous.cloC.clustered2[length(sawnwood.non.coniferous.cloC.clustered2)/4], sawnwood.non.coniferous.cloC.clustered2[length(sawnwood.non.coniferous.cloC.clustered2)/2],
+           veneer.sheets.cloC.clustered2[length(veneer.sheets.cloC.clustered2)/4], veneer.sheets.cloC.clustered2[length(veneer.sheets.cloC.clustered2)/2],
+           wood.chips.and.particles.cloC.clustered2[length(wood.chips.and.particles.cloC.clustered2)/4], wood.chips.and.particles.cloC.clustered2[length(wood.chips.and.particles.cloC.clustered2)/2],
+           wood.pulp.cloC.clustered2[length(wood.pulp.cloC.clustered2)/4], wood.pulp.cloC.clustered2[length(wood.pulp.cloC.clustered2)/2])
+
+eigC2 <- c(trade.data.eigC.clustered2[length(trade.data.eigC.clustered2)/4], trade.data.eigC.clustered2[length(trade.data.eigC.clustered2)/2],
+           fibreboard.eigC.clustered2[length(fibreboard.eigC.clustered2)/4], fibreboard.eigC.clustered2[length(fibreboard.eigC.clustered2)/2],
+           industrial.roundwood.coniferous.eigC.clustered2[length(industrial.roundwood.coniferous.eigC.clustered2)/4], industrial.roundwood.coniferous.eigC.clustered2[length(industrial.roundwood.coniferous.eigC.clustered2)/2],
+           industrial.roundwood.non.coniferous.non.tropical.eigC.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.eigC.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.eigC.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.eigC.clustered2)/2],
+           industrial.roundwood.non.coniferous.tropical.eigC.clustered2[length(industrial.roundwood.non.coniferous.tropical.eigC.clustered2)/4], industrial.roundwood.non.coniferous.tropical.eigC.clustered2[length(industrial.roundwood.non.coniferous.tropical.eigC.clustered2)/2],
+           newsprint.eigC.clustered2[length(newsprint.eigC.clustered2)/4], newsprint.eigC.clustered2[length(newsprint.eigC.clustered2)/2],
+           paper.and.paperboard.eigC.clustered2[length(paper.and.paperboard.eigC.clustered2)/4], paper.and.paperboard.eigC.clustered2[length(paper.and.paperboard.eigC.clustered2)/2],
+           plywood.eigC.clustered2[length(plywood.eigC.clustered2)/4], plywood.eigC.clustered2[length(plywood.eigC.clustered2)/2],
+           sawnwood.coniferous.eigC.clustered2[length(sawnwood.coniferous.eigC.clustered2)/4], sawnwood.coniferous.eigC.clustered2[length(sawnwood.coniferous.eigC.clustered2)/2],
+           sawnwood.non.coniferous.eigC.clustered2[length(sawnwood.non.coniferous.eigC.clustered2)/4], sawnwood.non.coniferous.eigC.clustered2[length(sawnwood.non.coniferous.eigC.clustered2)/2],
+           veneer.sheets.eigC.clustered2[length(veneer.sheets.eigC.clustered2)/4], veneer.sheets.eigC.clustered2[length(veneer.sheets.eigC.clustered2)/2],
+           wood.chips.and.particles.eigC.clustered2[length(wood.chips.and.particles.eigC.clustered2)/4], wood.chips.and.particles.eigC.clustered2[length(wood.chips.and.particles.eigC.clustered2)/2],
+           wood.pulp.eigC.clustered2[length(wood.pulp.eigC.clustered2)/4], wood.pulp.eigC.clustered2[length(wood.pulp.eigC.clustered2)/2])
+
+cluC2 <- c(trade.data.cluC.clustered2[length(trade.data.cluC.clustered2)/4], trade.data.cluC.clustered2[length(trade.data.cluC.clustered2)/2],
+           fibreboard.cluC.clustered2[length(fibreboard.cluC.clustered2)/4], fibreboard.cluC.clustered2[length(fibreboard.cluC.clustered2)/2],
+           industrial.roundwood.coniferous.cluC.clustered2[length(industrial.roundwood.coniferous.cluC.clustered2)/4], industrial.roundwood.coniferous.cluC.clustered2[length(industrial.roundwood.coniferous.cluC.clustered2)/2],
+           industrial.roundwood.non.coniferous.non.tropical.cluC.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.cluC.clustered2)/4], industrial.roundwood.non.coniferous.non.tropical.cluC.clustered2[length(industrial.roundwood.non.coniferous.non.tropical.cluC.clustered2)/2],
+           industrial.roundwood.non.coniferous.tropical.cluC.clustered2[length(industrial.roundwood.non.coniferous.tropical.cluC.clustered2)/4], industrial.roundwood.non.coniferous.tropical.cluC.clustered2[length(industrial.roundwood.non.coniferous.tropical.cluC.clustered2)/2],
+           newsprint.cluC.clustered2[length(newsprint.cluC.clustered2)/4], newsprint.cluC.clustered2[length(newsprint.cluC.clustered2)/2],
+           paper.and.paperboard.cluC.clustered2[length(paper.and.paperboard.cluC.clustered2)/4], paper.and.paperboard.cluC.clustered2[length(paper.and.paperboard.cluC.clustered2)/2],
+           plywood.cluC.clustered2[length(plywood.cluC.clustered2)/4], plywood.cluC.clustered2[length(plywood.cluC.clustered2)/2],
+           sawnwood.coniferous.cluC.clustered2[length(sawnwood.coniferous.cluC.clustered2)/4], sawnwood.coniferous.cluC.clustered2[length(sawnwood.coniferous.cluC.clustered2)/2],
+           sawnwood.non.coniferous.cluC.clustered2[length(sawnwood.non.coniferous.cluC.clustered2)/4], sawnwood.non.coniferous.cluC.clustered2[length(sawnwood.non.coniferous.cluC.clustered2)/2],
+           veneer.sheets.cluC.clustered2[length(veneer.sheets.cluC.clustered2)/4], veneer.sheets.cluC.clustered2[length(veneer.sheets.cluC.clustered2)/2],
+           wood.chips.and.particles.cluC.clustered2[length(wood.chips.and.particles.cluC.clustered2)/4], wood.chips.and.particles.cluC.clustered2[length(wood.chips.and.particles.cluC.clustered2)/2],
+           wood.pulp.cluC.clustered2[length(wood.pulp.cluC.clustered2)/4], wood.pulp.cluC.clustered2[length(wood.pulp.cluC.clustered2)/2])
+
+comp.two <- as.data.frame(cbind(markets,betC2,cloC2,eigC2,cluC2))
+names(comp.two) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality', 'Eigenvector Centrality', 'Clustering Coefficient')
+
+write.csv(comp.two, paste(direc, 'results/competition_2.csv', sep = ''), row.names = FALSE)
+
+# Three year lead
+
+betC3 <- c(trade.data.btwC.clustered3[length(trade.data.btwC.clustered3)/4], trade.data.btwC.clustered3[length(trade.data.btwC.clustered3)/2],
+           fibreboard.btwC.clustered3[length(fibreboard.btwC.clustered3)/4], fibreboard.btwC.clustered3[length(fibreboard.btwC.clustered3)/2],
+           industrial.roundwood.coniferous.btwC.clustered3[length(industrial.roundwood.coniferous.btwC.clustered3)/4], industrial.roundwood.coniferous.btwC.clustered3[length(industrial.roundwood.coniferous.btwC.clustered3)/2],
+           industrial.roundwood.non.coniferous.non.tropical.btwC.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.btwC.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.btwC.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.btwC.clustered3)/2],
+           industrial.roundwood.non.coniferous.tropical.btwC.clustered3[length(industrial.roundwood.non.coniferous.tropical.btwC.clustered3)/4], industrial.roundwood.non.coniferous.tropical.btwC.clustered3[length(industrial.roundwood.non.coniferous.tropical.btwC.clustered3)/2],
+           newsprint.btwC.clustered3[length(newsprint.btwC.clustered3)/4], newsprint.btwC.clustered3[length(newsprint.btwC.clustered3)/2],
+           paper.and.paperboard.btwC.clustered3[length(paper.and.paperboard.btwC.clustered3)/4], paper.and.paperboard.btwC.clustered3[length(paper.and.paperboard.btwC.clustered3)/2],
+           plywood.btwC.clustered3[length(plywood.btwC.clustered3)/4], plywood.btwC.clustered3[length(plywood.btwC.clustered3)/2],
+           sawnwood.coniferous.btwC.clustered3[length(sawnwood.coniferous.btwC.clustered3)/4], sawnwood.coniferous.btwC.clustered3[length(sawnwood.coniferous.btwC.clustered3)/2],
+           sawnwood.non.coniferous.btwC.clustered3[length(sawnwood.non.coniferous.btwC.clustered3)/4], sawnwood.non.coniferous.btwC.clustered3[length(sawnwood.non.coniferous.btwC.clustered3)/2],
+           veneer.sheets.btwC.clustered3[length(veneer.sheets.btwC.clustered3)/4], veneer.sheets.btwC.clustered3[length(veneer.sheets.btwC.clustered3)/2],
+           wood.chips.and.particles.btwC.clustered3[length(wood.chips.and.particles.btwC.clustered3)/4], wood.chips.and.particles.btwC.clustered3[length(wood.chips.and.particles.btwC.clustered3)/2],
+           wood.pulp.btwC.clustered3[length(wood.pulp.btwC.clustered3)/4], wood.pulp.btwC.clustered3[length(wood.pulp.btwC.clustered3)/2])
+
+cloC3 <- c(trade.data.cloC.clustered3[length(trade.data.cloC.clustered3)/4], trade.data.cloC.clustered3[length(trade.data.cloC.clustered3)/2],
+           fibreboard.cloC.clustered3[length(fibreboard.cloC.clustered3)/4], fibreboard.cloC.clustered3[length(fibreboard.cloC.clustered3)/2],
+           industrial.roundwood.coniferous.cloC.clustered3[length(industrial.roundwood.coniferous.cloC.clustered3)/4], industrial.roundwood.coniferous.cloC.clustered3[length(industrial.roundwood.coniferous.cloC.clustered3)/2],
+           industrial.roundwood.non.coniferous.non.tropical.cloC.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.cloC.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.cloC.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.cloC.clustered3)/2],
+           industrial.roundwood.non.coniferous.tropical.cloC.clustered3[length(industrial.roundwood.non.coniferous.tropical.cloC.clustered3)/4], industrial.roundwood.non.coniferous.tropical.cloC.clustered3[length(industrial.roundwood.non.coniferous.tropical.cloC.clustered3)/2],
+           newsprint.cloC.clustered3[length(newsprint.cloC.clustered3)/4], newsprint.cloC.clustered3[length(newsprint.cloC.clustered3)/2],
+           paper.and.paperboard.cloC.clustered3[length(paper.and.paperboard.cloC.clustered3)/4], paper.and.paperboard.cloC.clustered3[length(paper.and.paperboard.cloC.clustered3)/2],
+           plywood.cloC.clustered3[length(plywood.cloC.clustered3)/4], plywood.cloC.clustered3[length(plywood.cloC.clustered3)/2],
+           sawnwood.coniferous.cloC.clustered3[length(sawnwood.coniferous.cloC.clustered3)/4], sawnwood.coniferous.cloC.clustered3[length(sawnwood.coniferous.cloC.clustered3)/2],
+           sawnwood.non.coniferous.cloC.clustered3[length(sawnwood.non.coniferous.cloC.clustered3)/4], sawnwood.non.coniferous.cloC.clustered3[length(sawnwood.non.coniferous.cloC.clustered3)/2],
+           veneer.sheets.cloC.clustered3[length(veneer.sheets.cloC.clustered3)/4], veneer.sheets.cloC.clustered3[length(veneer.sheets.cloC.clustered3)/2],
+           wood.chips.and.particles.cloC.clustered3[length(wood.chips.and.particles.cloC.clustered3)/4], wood.chips.and.particles.cloC.clustered3[length(wood.chips.and.particles.cloC.clustered3)/2],
+           wood.pulp.cloC.clustered3[length(wood.pulp.cloC.clustered3)/4], wood.pulp.cloC.clustered3[length(wood.pulp.cloC.clustered3)/2])
+
+eigC3 <- c(trade.data.eigC.clustered3[length(trade.data.eigC.clustered3)/4], trade.data.eigC.clustered3[length(trade.data.eigC.clustered3)/2],
+           fibreboard.eigC.clustered3[length(fibreboard.eigC.clustered3)/4], fibreboard.eigC.clustered3[length(fibreboard.eigC.clustered3)/2],
+           industrial.roundwood.coniferous.eigC.clustered3[length(industrial.roundwood.coniferous.eigC.clustered3)/4], industrial.roundwood.coniferous.eigC.clustered3[length(industrial.roundwood.coniferous.eigC.clustered3)/2],
+           industrial.roundwood.non.coniferous.non.tropical.eigC.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.eigC.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.eigC.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.eigC.clustered3)/2],
+           industrial.roundwood.non.coniferous.tropical.eigC.clustered3[length(industrial.roundwood.non.coniferous.tropical.eigC.clustered3)/4], industrial.roundwood.non.coniferous.tropical.eigC.clustered3[length(industrial.roundwood.non.coniferous.tropical.eigC.clustered3)/2],
+           newsprint.eigC.clustered3[length(newsprint.eigC.clustered3)/4], newsprint.eigC.clustered3[length(newsprint.eigC.clustered3)/2],
+           paper.and.paperboard.eigC.clustered3[length(paper.and.paperboard.eigC.clustered3)/4], paper.and.paperboard.eigC.clustered3[length(paper.and.paperboard.eigC.clustered3)/2],
+           plywood.eigC.clustered3[length(plywood.eigC.clustered3)/4], plywood.eigC.clustered3[length(plywood.eigC.clustered3)/2],
+           sawnwood.coniferous.eigC.clustered3[length(sawnwood.coniferous.eigC.clustered3)/4], sawnwood.coniferous.eigC.clustered3[length(sawnwood.coniferous.eigC.clustered3)/2],
+           sawnwood.non.coniferous.eigC.clustered3[length(sawnwood.non.coniferous.eigC.clustered3)/4], sawnwood.non.coniferous.eigC.clustered3[length(sawnwood.non.coniferous.eigC.clustered3)/2],
+           veneer.sheets.eigC.clustered3[length(veneer.sheets.eigC.clustered3)/4], veneer.sheets.eigC.clustered3[length(veneer.sheets.eigC.clustered3)/2],
+           wood.chips.and.particles.eigC.clustered3[length(wood.chips.and.particles.eigC.clustered3)/4], wood.chips.and.particles.eigC.clustered3[length(wood.chips.and.particles.eigC.clustered3)/2],
+           wood.pulp.eigC.clustered3[length(wood.pulp.eigC.clustered3)/4], wood.pulp.eigC.clustered3[length(wood.pulp.eigC.clustered3)/2])
+
+cluC3 <- c(trade.data.cluC.clustered3[length(trade.data.cluC.clustered3)/4], trade.data.cluC.clustered3[length(trade.data.cluC.clustered3)/2],
+           fibreboard.cluC.clustered3[length(fibreboard.cluC.clustered3)/4], fibreboard.cluC.clustered3[length(fibreboard.cluC.clustered3)/2],
+           industrial.roundwood.coniferous.cluC.clustered3[length(industrial.roundwood.coniferous.cluC.clustered3)/4], industrial.roundwood.coniferous.cluC.clustered3[length(industrial.roundwood.coniferous.cluC.clustered3)/2],
+           industrial.roundwood.non.coniferous.non.tropical.cluC.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.cluC.clustered3)/4], industrial.roundwood.non.coniferous.non.tropical.cluC.clustered3[length(industrial.roundwood.non.coniferous.non.tropical.cluC.clustered3)/2],
+           industrial.roundwood.non.coniferous.tropical.cluC.clustered3[length(industrial.roundwood.non.coniferous.tropical.cluC.clustered3)/4], industrial.roundwood.non.coniferous.tropical.cluC.clustered3[length(industrial.roundwood.non.coniferous.tropical.cluC.clustered3)/2],
+           newsprint.cluC.clustered3[length(newsprint.cluC.clustered3)/4], newsprint.cluC.clustered3[length(newsprint.cluC.clustered3)/2],
+           paper.and.paperboard.cluC.clustered3[length(paper.and.paperboard.cluC.clustered3)/4], paper.and.paperboard.cluC.clustered3[length(paper.and.paperboard.cluC.clustered3)/2],
+           plywood.cluC.clustered3[length(plywood.cluC.clustered3)/4], plywood.cluC.clustered3[length(plywood.cluC.clustered3)/2],
+           sawnwood.coniferous.cluC.clustered3[length(sawnwood.coniferous.cluC.clustered3)/4], sawnwood.coniferous.cluC.clustered3[length(sawnwood.coniferous.cluC.clustered3)/2],
+           sawnwood.non.coniferous.cluC.clustered3[length(sawnwood.non.coniferous.cluC.clustered3)/4], sawnwood.non.coniferous.cluC.clustered3[length(sawnwood.non.coniferous.cluC.clustered3)/2],
+           veneer.sheets.cluC.clustered3[length(veneer.sheets.cluC.clustered3)/4], veneer.sheets.cluC.clustered3[length(veneer.sheets.cluC.clustered3)/2],
+           wood.chips.and.particles.cluC.clustered3[length(wood.chips.and.particles.cluC.clustered3)/4], wood.chips.and.particles.cluC.clustered3[length(wood.chips.and.particles.cluC.clustered3)/2],
+           wood.pulp.cluC.clustered3[length(wood.pulp.cluC.clustered3)/4], wood.pulp.cluC.clustered3[length(wood.pulp.cluC.clustered3)/2])
+
+comp.three <- as.data.frame(cbind(markets,betC3,cloC3,eigC3,cluC3))
+names(comp.three) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality', 'Eigenvector Centrality', 'Clustering Coefficient')
+
+write.csv(comp.three, paste(direc, 'results/competition_3.csv', sep = ''), row.names = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
