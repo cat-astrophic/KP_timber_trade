@@ -5,9 +5,7 @@
 library(ggplot2)
 library(stargazer)
 library(sandwich)
-#library(kableExtra)
-#library(modelsummary)
-#library(AER)
+library(modelsummary)
 
 # Directory info
 
@@ -132,6 +130,148 @@ sawnwood.non.coniferous <- merge(sawnwood.non.coniferous, kp.df, by = c('Nation'
 wood.pulp <- merge(wood.pulp, kp.df, by = c('Nation', 'Year'))
 industrial.roundwood.non.coniferous.tropical <- merge(industrial.roundwood.non.coniferous.tropical, kp.df, by = c('Nation', 'Year'))
 wood.chips.and.particles <- merge(wood.chips.and.particles, kp.df, by = c('Nation', 'Year'))
+
+# Cute summary statistics table
+
+all.data <- rbind(trade.data, plywood, paper.and.paperboard, industrial.roundwood.non.coniferous.non.tropical,
+                  sawnwood.coniferous, veneer.sheets, newsprint, fibreboard, industrial.roundwood.coniferous,
+                  sawnwood.non.coniferous, wood.pulp, industrial.roundwood.non.coniferous.tropical, wood.chips.and.particles)
+
+sum.data <- as.data.frame(cbind(all.data$Betweenness.Centrality...Trade, all.data$Closeness.Centrality...Trade,
+                  all.data$Eigenvector.Centrality...Trade, all.data$In.Degree.Centrality...Trade,
+                  all.data$Out.Degree.Centrality...Trade, all.data$Clustering.Coefficient...Trade,
+                  all.data$Betweenness.Centrality...Competition, all.data$Closeness.Centrality...Competition,
+                  all.data$Eigenvector.Centrality...Competition, all.data$Clustering.Coefficient...Competition,
+                  all.data$KP, all.data$Net.Exports, all.data$GDP.per.capita..constant.2010.US..,
+                  all.data$Ores.and.metals.exports....of.merchandise.exports.,
+                  all.data$Ores.and.metals.imports....of.merchandise.imports.,
+                  all.data$Forest.area..sq..km., all.data$Forest.area....of.land.area.,
+                  all.data$Forest.rents....of.GDP., all.data$Agricultural.land..sq..km.,
+                  all.data$Agricultural.land....of.land.area., all.data$Cereal.production..metric.tons.,
+                  all.data$Cereal.yield..kg.per.hectare., all.data$Land.under.cereal.production..hectares.,
+                  all.data$Real.interest.rate...., all.data$Population..total, all.data$Population.growth..annual...,
+                  all.data$Tariff.rate..applied..weighted.mean..all.products....,
+                  all.data$Tariff.rate..applied..weighted.mean..primary.products....,
+                  all.data$Tariff.rate..applied..weighted.mean..manufactured.products....))
+
+new_names <- c('Betweenness Centrality - Trade', 'Closeness Centrality - Trade',
+               'Eigenvector Centrality - Trade', 'In Degree Centrality - Trade',
+               'Out Degree Centrality - Trade', 'Clustering Coefficient - Trade',
+               'Betweenness Centrality - Competition', 'Closeness Centrality - Competition',
+               'Eigenvector Centrality - Competition',  'Clustering Coefficient - Competition',
+               'Kyoto Protocol Nation', 'Net Exports', 'GDP per capita (2010 USD)',
+               'Ores and Metals Exports (% of merchandise exports)',
+               'Ores and Metals Imports (% of merchandise imports)',
+               'Forest Area (sq. km.)', 'Forest Area (% of land area)',
+               'Forest Rents (% of GDP)', 'Agricultural Land (sq. km.)',
+               'Agricultural Land (% of land area)', 'Cereal Production (metric tons)',
+               'Cereal Yield (kg per hectare)', 'Land Under Cereal Production (hectares)',
+               'Real Interest Rate (%)', 'Population', 'Population Growth (annual %)',
+               'Tariff Rate, Applied, Weighted Mean, All Products (%)',
+               'Tariff Rate, Applied, Weighted Mean, Primary Products (%)',
+               'Tariff Rate, Applied, Weighted Mean, Manufactured Products (%)')
+
+keepers <- new_names <- c('Betweenness Centrality - Trade', 'Closeness Centrality - Trade',
+                          'Eigenvector Centrality - Trade', 'In Degree Centrality - Trade',
+                          'Out Degree Centrality - Trade', 'Clustering Coefficient - Trade',
+                          'Betweenness Centrality - Competition', 'Closeness Centrality - Competition',
+                          'Eigenvector Centrality - Competition', 'Clustering Coefficient - Competition',
+                          'Kyoto Protocol Nation', 'Net Exports')
+
+names(sum.data) <- new_names
+#datasummary_skim(sum.data, fmt = '%.3f')
+datasummary_skim(sum.data[,which(names(sum.data) %in% keepers)], fmt = '%.3f')
+
+# Plotting the evolution of the network level measures
+
+years <- unique(all.data$Year)
+df <- all.data[which(all.data$Nation == 'Afghanistan'),]
+
+for (i in 1:13) {
+  
+  ts1 <- df$Average.Clustering.Coefficient...Trade[1:21]
+  ts2 <- df$Average.Clustering.Coefficient...Trade[22:42]
+  ts3 <- df$Average.Clustering.Coefficient...Trade[43:63]
+  ts4 <- df$Average.Clustering.Coefficient...Trade[64:84]
+  ts5 <- df$Average.Clustering.Coefficient...Trade[85:105]
+  ts6 <- df$Average.Clustering.Coefficient...Trade[106:126]
+  ts7 <- df$Average.Clustering.Coefficient...Trade[146:147]
+  ts8 <- df$Average.Clustering.Coefficient...Trade[148:168]
+  ts9 <- df$Average.Clustering.Coefficient...Trade[169:189]
+  ts10 <- df$Average.Clustering.Coefficient...Trade[190:210]
+  ts11 <- df$Average.Clustering.Coefficient...Trade[211:231]
+  ts12 <- df$Average.Clustering.Coefficient...Trade[232:252]
+  ts13 <- df$Average.Clustering.Coefficient...Trade[253:273]
+  
+  cs1 <- df$Average.Clustering.Coefficient...Comp[1:21]
+  cs2 <- df$Average.Clustering.Coefficient...Comp[22:42]
+  cs3 <- df$Average.Clustering.Coefficient...Comp[43:63]
+  cs4 <- df$Average.Clustering.Coefficient...Comp[64:84]
+  cs5 <- df$Average.Clustering.Coefficient...Comp[85:105]
+  cs6 <- df$Average.Clustering.Coefficient...Comp[106:126]
+  cs7 <- df$Average.Clustering.Coefficient...Comp[146:147]
+  cs8 <- df$Average.Clustering.Coefficient...Comp[148:168]
+  cs9 <- df$Average.Clustering.Coefficient...Comp[169:189]
+  cs10 <- df$Average.Clustering.Coefficient...Comp[190:210]
+  cs11 <- df$Average.Clustering.Coefficient...Comp[211:231]
+  cs12 <- df$Average.Clustering.Coefficient...Comp[232:252]
+  cs13 <- df$Average.Clustering.Coefficient...Comp[253:273]
+  
+}
+
+ts.df <- as.data.frame(cbind(years,ts1,ts2,ts3,ts4,ts5,ts6,ts7,ts8,ts9,ts10,ts11,ts12,ts13))
+cs.df <- as.data.frame(cbind(years,cs1,cs2,cs3,cs4,cs5,cs6,cs7,cs8,cs9,cs10,cs11,cs12,cs13))
+
+colnames(ts.df) <- c('years', 'All Timber', 'Plywood', 'Paper & Paperboard', 'Industrial Roundwood (NCNT)',
+               'Sawnwood - Coniferous', 'Veneer Sheets', 'Newsprint', 'Fibreboard',
+               'Industrial Roundwood (C)', 'Sawnwood - Non-Coniferous', 'Wood Pulp',
+               'Industrial Roundwood (NCT)', 'Wood Chips & Particles')
+colnames(cs.df) <- c('years', 'All Timber', 'Plywood', 'Paper & Paperboard', 'Industrial Roundwood (NCNT)',
+                     'Sawnwood - Coniferous', 'Veneer Sheets', 'Newsprint', 'Fibreboard',
+                     'Industrial Roundwood (C)', 'Sawnwood - Non-Coniferous', 'Wood Pulp',
+                     'Industrial Roundwood (NCT)', 'Wood Chips & Particles')
+
+ggplot(data = ts.df, aes(x = years, y = value, color = variable)) +
+  ggtitle('The Intertemporal Evolution of the Timber Trade Network Topology') +
+  ylab('Average Clustering Coefficient') +
+  geom_line(aes(x = years, y = ts.df[,2], col = 'All Timber'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,3], col = 'Plywood'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,4], col = 'Paper & Paperboard'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,5], col = 'Industrial Roundwood (NCNT)'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,6], col = 'Sawnwood - Coniferous'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,7], col = 'Veneer Sheets'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,8], col = 'Newsprint'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,9], col = 'Fibreboard'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,10], col = 'Industrial Roundwood (C)'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,11], col = 'Sawnwood - Non-Coniferous'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,12], col = 'Wood Pulp'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,13], col = 'Industrial Roundwood (NCT)'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = ts.df[,14], col = 'Wood Chips & Particles'), size = 2, alpha = 1) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ylim(0,1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 8)) +
+  geom_vline(xintercept = 2008) +
+  scale_colour_discrete('Trade Network')
+
+ggplot(data = cs.df, aes(x = years, y = value, color = variable)) +
+  ggtitle('The Intertemporal Evolution of the Timber Trade Competition Graph Topology') +
+  ylab('Average Clustering Coefficient') +
+  geom_line(aes(x = years, y = cs.df[,2], col = 'All Timber'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,3], col = 'Plywood'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,4], col = 'Paper & Paperboard'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,5], col = 'Industrial Roundwood (NCNT)'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,6], col = 'Sawnwood - Coniferous'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,7], col = 'Veneer Sheets'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,8], col = 'Newsprint'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,9], col = 'Fibreboard'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,10], col = 'Industrial Roundwood (C)'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,11], col = 'Sawnwood - Non-Coniferous'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,12], col = 'Wood Pulp'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,13], col = 'Industrial Roundwood (NCT)'), size = 2, alpha = 1) +
+  geom_line(aes(x = years, y = cs.df[,14], col = 'Wood Chips & Particles'), size = 2, alpha = 1) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ylim(0,1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 8)) +
+  geom_vline(xintercept = 2008) +
+  scale_colour_discrete('Competition Graph')
 
 # Running regressions
 
