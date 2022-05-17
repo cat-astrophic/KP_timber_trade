@@ -57,11 +57,11 @@ def trade_fx(val,df):
     
     if val%2 == 0:
         
-        output = str(df.Market[val]) + ' & ' + str(df['Betweenness Centrality'][val]) + str(signif(df['Betweenness Centrality'][val],df['Betweenness Centrality'][val+1])) + ' & ' + str(df['Closeness Centrality'][val]) + str(signif(df['Closeness Centrality'][val],df['Closeness Centrality'][val+1])) + ' & ' + str(df['Eigenvector Centrality'][val]) + str(signif(df['Eigenvector Centrality'][val],df['Eigenvector Centrality'][val+1])) + ' & ' + str(df['In Degree Centrality'][val]) + str(signif(df['In Degree Centrality'][val],df['In Degree Centrality'][val+1])) + ' & ' + str(df['Out Degree Centrality'][val]) + str(signif(df['Out Degree Centrality'][val],df['Out Degree Centrality'][val+1])) + ' & ' + str(df['Clustering Coefficient'][val]) + str(signif(df['Clustering Coefficient'][val],df['Clustering Coefficient'][val+1])) + '\\\\\n'
+        output = str(df.Market[val]) + ' & ' + str(round(float(df['Betweenness Centrality'][val]),5)) + str(signif(df['Betweenness Centrality'][val],df['Betweenness Centrality'][val+1])) + ' & ' + str(round(float(df['Closeness Centrality'][val]),5)) + str(signif(df['Closeness Centrality'][val],df['Closeness Centrality'][val+1])) + ' & ' + str(round(float(df['Eigenvector Centrality'][val]),5)) + str(signif(df['Eigenvector Centrality'][val],df['Eigenvector Centrality'][val+1])) + ' & ' + str(round(float(df['In Degree Centrality'][val]),5)) + str(signif(df['In Degree Centrality'][val],df['In Degree Centrality'][val+1])) + ' & ' + str(round(float(df['Out Degree Centrality'][val]),5)) + str(signif(df['Out Degree Centrality'][val],df['Out Degree Centrality'][val+1])) + ' & ' + str(round(float(df['Clustering Coefficient'][val]),5)) + str(signif(df['Clustering Coefficient'][val],df['Clustering Coefficient'][val+1])) + '\\\\\n'
         
     else:
         
-        output = ' & (' + str(df['Betweenness Centrality'][val]) + ') & (' + str(df['Closeness Centrality'][val]) + ') & (' + str(df['Eigenvector Centrality'][val]) + ') & (' + str(df['In Degree Centrality'][val]) + ') & (' + str(df['Out Degree Centrality'][val]) + ') & (' + str(df['Clustering Coefficient'][val]) + ')\\\\\n'
+        output = ' & (' + str(round(float(df['Betweenness Centrality'][val]),5)) + ') & (' + str(round(float(df['Closeness Centrality'][val]),5)) + ') & (' + str(round(float(df['Eigenvector Centrality'][val]),5)) + ') & (' + str(round(float(df['In Degree Centrality'][val]),5)) + ') & (' + str(round(float(df['Out Degree Centrality'][val]),5)) + ') & (' + str(round(float(df['Clustering Coefficient'][val]),5)) + ')\\\\\n'
         
     return output
 
@@ -69,11 +69,11 @@ def comp_fx(val,df):
     
     if val%2 == 0:
         
-        output = str(df.Market[val]) + ' & ' + str(df['Betweenness Centrality'][val]) + str(signif(df['Betweenness Centrality'][val],df['Betweenness Centrality'][val+1])) + ' & ' + str(df['Closeness Centrality'][val]) + str(signif(df['Closeness Centrality'][val],df['Closeness Centrality'][val+1])) + ' & ' + str(df['Eigenvector Centrality'][val]) + str(signif(df['Eigenvector Centrality'][val],df['Eigenvector Centrality'][val+1])) + ' & ' + str(df['Clustering Coefficient'][val]) + str(signif(df['Clustering Coefficient'][val],df['Clustering Coefficient'][val+1])) + '\\\\\n'
+        output = str(df.Market[val]) + ' & ' + str(round(float(df['Betweenness Centrality'][val]),5)) + str(signif(df['Betweenness Centrality'][val],df['Betweenness Centrality'][val+1])) + ' & ' + str(round(float(df['Closeness Centrality'][val]),5)) + str(signif(df['Closeness Centrality'][val],df['Closeness Centrality'][val+1])) + ' & ' + str(round(float(df['Eigenvector Centrality'][val]),5)) + str(signif(df['Eigenvector Centrality'][val],df['Eigenvector Centrality'][val+1])) + ' & ' + str(round(float(df['Clustering Coefficient'][val]),5)) + str(signif(df['Clustering Coefficient'][val],df['Clustering Coefficient'][val+1])) + '\\\\\n'
         
     else:
         
-        output = ' & (' + str(df['Betweenness Centrality'][val]) + ') & (' + str(df['Closeness Centrality'][val]) + ') & (' + str(df['Eigenvector Centrality'][val]) + ') & (' + str(df['Clustering Coefficient'][val]) + ')\\\\\n'
+        output = ' & (' + str(round(float(df['Betweenness Centrality'][val]),5)) + ') & (' + str(round(float(df['Closeness Centrality'][val]),5)) + ') & (' + str(round(float(df['Eigenvector Centrality'][val]),5)) + ') & (' + str(round(float(df['Clustering Coefficient'][val]),5)) + ')\\\\\n'
         
     return output
 
