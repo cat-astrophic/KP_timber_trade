@@ -20,6 +20,15 @@ c1 = pd.read_csv(direc + 'competition_1.csv')
 c2 = pd.read_csv(direc + 'competition_2.csv')
 c3 = pd.read_csv(direc + 'competition_3.csv')
 
+t0iv = pd.read_csv(direc + 'trade_iv.csv')
+t1iv = pd.read_csv(direc + 'trade_1_iv.csv')
+t2iv = pd.read_csv(direc + 'trade_2_iv.csv')
+t3iv = pd.read_csv(direc + 'trade_3_iv.csv')
+c0iv = pd.read_csv(direc + 'competition_iv.csv')
+c1iv = pd.read_csv(direc + 'competition_1_iv.csv')
+c2iv = pd.read_csv(direc + 'competition_2_iv.csv')
+c3iv = pd.read_csv(direc + 'competition_3_iv.csv')
+
 # Defining a function to caluclate statistical significance
 
 def signif(inp1,inp2):
@@ -128,10 +137,14 @@ def tex_writer(saveas, table_label, df, table_type):
 
 # Writing tables
 
-save_locs = ['trade', 'trade_1', 'trade_2', 'trade_3', 'competition', 'competition_1', 'competition_2', 'competition_3']
-table_labels = ['t0', 't1', 't2', 't3', 'c0', 'c1', 'c2', 'c3']
-dfs = [t0, t1, t2, t3, c0, c1, c2, c3]
-table_types = ['trade', 'trade', 'trade', 'trade', 'comp', 'comp', 'comp', 'comp']
+save_locs = ['trade', 'trade_1', 'trade_2', 'trade_3', 'competition', 'competition_1',
+             'competition_2', 'competition_3', 'trade_iv', 'trade_1_iv', 'trade__iv2',
+             'trade_3_iv', 'competition_iv', 'competition_1_iv', 'competition_2_iv', 'competition_3_iv']
+table_labels = ['t0', 't1', 't2', 't3', 'c0', 'c1', 'c2', 'c3',
+                't0iv', 't1iv', 't2iv', 't3iv', 'c0iv', 'c1iv', 'c2iv', 'c3iv']
+dfs = [t0, t1, t2, t3, c0, c1, c2, c3, t0iv, t1iv, t2iv, t3iv, c0iv, c1iv, c2iv, c3iv]
+table_types = ['trade', 'trade', 'trade', 'trade', 'comp', 'comp', 'comp', 'comp',
+               'trade', 'trade', 'trade', 'trade', 'comp', 'comp', 'comp', 'comp']
 
 for x in range(len(save_locs)):
     
