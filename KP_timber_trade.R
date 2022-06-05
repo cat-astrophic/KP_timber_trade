@@ -187,6 +187,7 @@ datasummary_skim(sum.data[,which(names(sum.data) %in% keepers)], fmt = '%.3f')
 
 years <- unique(all.data$Year)
 df <- all.data[which(all.data$Nation == 'Afghanistan'),]
+rownames(df) <- 1:nrow(df)
 
 for (i in 1:13) {
   
@@ -196,7 +197,7 @@ for (i in 1:13) {
   ts4 <- df$Average.Clustering.Coefficient...Trade[64:84]
   ts5 <- df$Average.Clustering.Coefficient...Trade[85:105]
   ts6 <- df$Average.Clustering.Coefficient...Trade[106:126]
-  ts7 <- df$Average.Clustering.Coefficient...Trade[146:147]
+  ts7 <- df$Average.Clustering.Coefficient...Trade[126:147]
   ts8 <- df$Average.Clustering.Coefficient...Trade[148:168]
   ts9 <- df$Average.Clustering.Coefficient...Trade[169:189]
   ts10 <- df$Average.Clustering.Coefficient...Trade[190:210]
@@ -210,7 +211,7 @@ for (i in 1:13) {
   cs4 <- df$Average.Clustering.Coefficient...Comp[64:84]
   cs5 <- df$Average.Clustering.Coefficient...Comp[85:105]
   cs6 <- df$Average.Clustering.Coefficient...Comp[106:126]
-  cs7 <- df$Average.Clustering.Coefficient...Comp[146:147]
+  cs7 <- df$Average.Clustering.Coefficient...Comp[126:147]
   cs8 <- df$Average.Clustering.Coefficient...Comp[148:168]
   cs9 <- df$Average.Clustering.Coefficient...Comp[169:189]
   cs10 <- df$Average.Clustering.Coefficient...Comp[190:210]
@@ -273,6 +274,202 @@ ggplot(data = cs.df, aes(x = years, y = value, color = variable)) +
   ylim(0,1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 8)) +
   geom_vline(xintercept = 2008) +
   scale_colour_discrete('Competition Graph')
+
+# Plots of the distributions of centrality measures
+
+nations <- unique(all.data$Nation)
+kp.idx <- c()
+kp.idx2 <- c()
+gdp.pc <- c()
+forest.area <- c()
+pre.in.deg <- c()
+pre.out.deg <- c()
+pre.btw.cen <- c()
+pre.eig.cen <- c()
+pre.clo.cen <- c()
+pre.cluster <- c()
+pre.btw.cen.co <- c()
+pre.eig.cen.co <- c()
+pre.clo.cen.co <- c()
+pre.cluster.co <- c()
+post.in.deg <- c()
+post.out.deg <- c()
+post.btw.cen <- c()
+post.eig.cen <- c()
+post.clo.cen <- c()
+post.cluster <- c()
+post.btw.cen.co <- c()
+post.eig.cen.co <- c()
+post.clo.cen.co <- c()
+post.cluster.co <- c()
+#network.code <- c()
+
+for (n in 1:length(nations)) {
+  
+  tmp <- trade.data[which(trade.data$Nation == nations[n]),]
+  kp.idx <- c(kp.idx, mean(tmp$KP))
+  gdp.pc <- c(gdp.pc, tmp$GDP.per.capita..constant.2010.US..[which(tmp$Year == 2008)])
+  forest.area <- c(forest.area, tmp$Forest.area..sq..km.[which(tmp$Year == 2008)])
+  pre.in.deg <- c(pre.in.deg, mean(tmp$In.Degree.Centrality...Trade[which(tmp$Year < 2008)], na.rm = TRUE))
+  pre.out.deg <- c(pre.out.deg, mean(tmp$Out.Degree.Centrality...Trade[which(tmp$Year < 2008)], na.rm = TRUE))
+  pre.btw.cen <- c(pre.btw.cen, mean(tmp$Betweenness.Centrality...Trade[which(tmp$Year < 2008)], na.rm = TRUE))
+  pre.eig.cen <- c(pre.eig.cen, mean(tmp$Eigenvector.Centrality...Trade[which(tmp$Year < 2008)], na.rm = TRUE))
+  pre.clo.cen <- c(pre.clo.cen, mean(tmp$Closeness.Centrality...Trade[which(tmp$Year < 2008)], na.rm = TRUE))
+  pre.cluster <- c(pre.cluster, mean(tmp$Clustering.Coefficient...Trade[which(tmp$Year < 2008)], na.rmm = TRUE))
+  pre.btw.cen.co <- c(pre.btw.cen.co, mean(tmp$Betweenness.Centrality...Competition[which(tmp$Year < 2008)], na.rm = TRUE))
+  pre.eig.cen.co <- c(pre.eig.cen.co, mean(tmp$Eigenvector.Centrality...Competition[which(tmp$Year < 2008)], na.rm = TRUE))
+  pre.clo.cen.co <- c(pre.clo.cen.co, mean(tmp$Closeness.Centrality...Competition[which(tmp$Year < 2008)], na.rm = TRUE))
+  pre.cluster.co <- c(pre.cluster.co, mean(tmp$Clustering.Coefficient...Competition[which(tmp$Year < 2008)], na.rm = TRUE))
+  post.in.deg <- c(post.in.deg, mean(tmp$In.Degree.Centrality...Trade[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.out.deg <- c(post.out.deg, mean(tmp$Out.Degree.Centrality...Trade[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.btw.cen <- c(post.btw.cen, mean(tmp$Betweenness.Centrality...Trade[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.eig.cen <- c(post.eig.cen, mean(tmp$Eigenvector.Centrality...Trade[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.clo.cen <- c(post.clo.cen, mean(tmp$Closeness.Centrality...Trade[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.cluster <- c(post.cluster, mean(tmp$Clustering.Coefficient...Trade[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.btw.cen.co <- c(post.btw.cen.co, mean(tmp$Betweenness.Centrality...Competition[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.eig.cen.co <- c(post.eig.cen.co, mean(tmp$Eigenvector.Centrality...Competition[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.clo.cen.co <- c(post.clo.cen.co, mean(tmp$Closeness.Centrality...Competition[which(tmp$Year >= 2008)], na.rm = TRUE))
+  post.cluster.co <- c(post.cluster.co, mean(tmp$Clustering.Coefficient...Competition[which(tmp$Year >= 2008)], na.rm = TRUE))
+  
+  if (mean(tmp$KP) == 1) {
+    
+    kp.idx2 <- c(kp.idx2, 'Treated')
+    
+  } else {
+    
+    kp.idx2 <- c(kp.idx2, 'Control')
+    
+  }
+  
+}
+
+cm.plots.df <- as.data.frame(cbind(kp.idx, gdp.pc, forest.area, pre.in.deg, pre.out.deg,
+                                   pre.btw.cen, pre.eig.cen, pre.clo.cen, pre.cluster, pre.btw.cen.co,
+                                   pre.eig.cen.co, pre.clo.cen.co, pre.cluster.co, post.in.deg,
+                                   post.out.deg, post.btw.cen, post.eig.cen, post.clo.cen, post.cluster,
+                                   post.btw.cen.co, post.eig.cen.co, post.clo.cen.co, post.cluster.co))
+cm.plots.df$nations <- nations
+cm.plots.df$kp.idx2 <- kp.idx2
+cm.plots.df$in.deg.net.change <- as.numeric(cm.plots.df$post.in.deg) - as.numeric(cm.plots.df$pre.in.deg)
+cm.plots.df$out.deg.net.change <- as.numeric(cm.plots.df$post.out.deg) - as.numeric(cm.plots.df$pre.out.deg)
+cm.plots.df$btw.net.change <- as.numeric(cm.plots.df$post.btw.cen) - as.numeric(cm.plots.df$pre.btw.cen)
+cm.plots.df$eig.net.change <- as.numeric(cm.plots.df$post.eig.cen) - as.numeric(cm.plots.df$pre.eig.cen)
+cm.plots.df$clo.net.change <- as.numeric(cm.plots.df$post.clo.cen) - as.numeric(cm.plots.df$pre.clo.cen)
+cm.plots.df$clust.net.change <- as.numeric(cm.plots.df$post.cluster) - as.numeric(cm.plots.df$pre.cluster)
+cm.plots.df$btw.comp.change <- as.numeric(cm.plots.df$post.btw.cen.co) - as.numeric(cm.plots.df$pre.btw.cen.co)
+cm.plots.df$eig.comp.change <- as.numeric(cm.plots.df$post.eig.cen.co) - as.numeric(cm.plots.df$pre.eig.cen.co)
+cm.plots.df$clo.comp.change <- as.numeric(cm.plots.df$post.clo.cen.co) - as.numeric(cm.plots.df$pre.clo.cen.co)
+cm.plots.df$clust.comp.change <- as.numeric(cm.plots.df$post.cluster.co) - as.numeric(cm.plots.df$pre.cluster.co)
+
+# In Degree Centrality Change Plot - Trade
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = in.deg.net.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the In Degree Centrality for Nations') +
+  ylab('Change in In Degree Centrality') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Out Degree Centrality Change Plot - Trade
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = out.deg.net.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Out Degree Centrality for Nations') +
+  ylab('Change in Out Degree Centrality') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Betweenness Centrality Change Plot - Trade
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = btw.net.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Betweenness Centrality for Nations') +
+  ylab('Change in Betweenness Centrality') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Eigenvalue Centrality Change Plot - Trade
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = eig.net.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Eigenvalue Centrality for Nations') +
+  ylab('Change in Eigenvalue Centrality') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Closeness Centrality Change Plot - Trade
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = clo.net.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Closeness Centrality for Nations') +
+  ylab('Change in Closeness Centrality') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Clustering Coefficient Change Plot - Trade
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = clust.net.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Clustering Coefficient for Nations') +
+  ylab('Change in Clustering Coefficient') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Betweenness Centrality Change Plot - Comp
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = btw.comp.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Betweenness Centrality for Nations') +
+  ylab('Change in Betweenness Centrality') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Eigenvalue Centrality Change Plot - Comp
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = eig.comp.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Eigenvalue Centrality for Nations') +
+  ylab('Change in Eigenvalue Centrality') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Closeness Centrality Change Plot - Comp
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = clo.comp.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Closeness Centrality for Nations') +
+  ylab('Change in Closeness Centrality') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
+
+# Clustering Coefficient Change Plot - Comp
+
+ggplot(cm.plots.df, aes(x = gdp.pc, y = clust.comp.change)) +
+  geom_point(aes(shape = factor(kp.idx2), color = factor(kp.idx2)), size = 3) +
+  theme(legend.position = 'right', plot.title = element_text(hjust = 0.5)) +
+  ggtitle('Changes in the Clustering Coefficient for Nations') +
+  ylab('Change in Clustering Coefficient') +
+  xlab('GDP per capita in 2008 (USD)') +
+  scale_colour_discrete(name = 'KP Status') +
+  scale_shape_discrete(name = 'KP Status')
 
 # Running regressions
 
