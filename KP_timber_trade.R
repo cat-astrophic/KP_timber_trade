@@ -275,6 +275,142 @@ ggplot(data = cs.df, aes(x = years, y = value, color = variable)) +
   geom_vline(xintercept = 2008) +
   scale_colour_discrete('Competition Graph')
 
+# t-tests for changes in network level statistics
+
+mu.in <- c()
+mu.out <- c()
+mu.bet <- c()
+mu.eig <- c()
+mu.clo <- c()
+mu.clust <- c()
+mu.bet.co <- c()
+mu.eig.co <- c()
+mu.clo.co <- c()
+mu.clust.co <- c()
+
+for (i in 1:length(years)) {
+  
+  tmp <- trade.data[which(trade.data$Year == years[i]),]
+  mu.in <- c(mu.in, mean(tmp$In.Degree.Centrality...Trade))
+  mu.out <- c(mu.out, mean(tmp$Out.Degree.Centrality...Trade))
+  mu.bet <- c(mu.bet, mean(tmp$Betweenness.Centrality...Trade))
+  mu.eig <- c(mu.eig, mean(tmp$Eigenvector.Centrality...Trade))
+  mu.clo <- c(mu.clo, mean(tmp$Closeness.Centrality...Trade))
+  mu.clust <- c(mu.clust, mean(tmp$Clustering.Coefficient...Trade))
+  mu.bet.co <- c(mu.bet.co, mean(tmp$Betweenness.Centrality...Competition))
+  mu.eig.co <- c(mu.eig.co, mean(tmp$Eigenvector.Centrality...Competition))
+  mu.clo.co <- c(mu.clo.co, mean(tmp$Closeness.Centrality...Competition))
+  mu.clust.co <- c(mu.clust.co, mean(tmp$Clustering.Coefficient...Competition))
+  
+}
+
+mu.in0 <- mu.in[2:11]
+mu.out0 <- mu.out[2:11]
+mu.bet0 <- mu.bet[2:11]
+mu.eig0 <- mu.eig[2:11]
+mu.clo0 <- mu.clo[2:11]
+mu.clust0 <- mu.clust[2:11]
+mu.bet.co0 <- mu.bet.co[2:11]
+mu.eig.co0 <- mu.eig.co[2:11]
+mu.clo.co0 <- mu.clo.co[2:11]
+mu.clust.co0 <- mu.clust.co[2:11]
+
+mu.in1 <- mu.in[12:21]
+mu.out1 <- mu.out[12:21]
+mu.bet1 <- mu.bet[12:21]
+mu.eig1 <- mu.eig[12:21]
+mu.clo1 <- mu.clo[12:21]
+mu.clust1 <- mu.clust[12:21]
+mu.bet.co1 <- mu.bet.co[12:21]
+mu.eig.co1 <- mu.eig.co[12:21]
+mu.clo.co1 <- mu.clo.co[12:21]
+mu.clust.co1 <- mu.clust.co[12:21]
+
+t.in <- t.test(mu.in0, mu.in1, paired = TRUE)
+t.out <- t.test(mu.out0, mu.out1, paired = TRUE)
+t.bet <- t.test(mu.bet0, mu.bet1, paired = TRUE)
+t.eig <- t.test(mu.eig0, mu.eig1, paired = TRUE)
+t.clo <- t.test(mu.clo0, mu.clo1, paired = TRUE)
+t.clust <- t.test(mu.clust0, mu.clust1, paired = TRUE)
+t.bet.co <- t.test(mu.bet.co0, mu.bet.co1, paired = TRUE)
+t.eig.co <- t.test(mu.eig.co0, mu.eig.co1, paired = TRUE)
+t.clo.co <- t.test(mu.clo.co0, mu.clo.co1, paired = TRUE)
+t.clust.co <- t.test(mu.clust.co0, mu.clust.co1, paired = TRUE)
+
+# t-tests for changes in network level statistics, but this time weighted by net exports
+
+trade.data$abs.nx <- abs(trade.data$Net.Exports)
+trade.data$indegw <- trade.data$In.Degree.Centrality...Trade * trade.data$abs.nx
+trade.data$outdegw <- trade.data$Out.Degree.Centrality...Trade * trade.data$abs.nx
+trade.data$betw <- trade.data$Betweenness.Centrality...Trade * trade.data$abs.nx
+trade.data$eigw <- trade.data$Eigenvector.Centrality...Trade * trade.data$abs.nx
+trade.data$clow <- trade.data$Closeness.Centrality...Trade * trade.data$abs.nx
+trade.data$clustw <- trade.data$Clustering.Coefficient...Trade * trade.data$abs.nx
+trade.data$betCw <- trade.data$Betweenness.Centrality...Competition * trade.data$abs.nx
+trade.data$eigCw <- trade.data$Eigenvector.Centrality...Competition * trade.data$abs.nx
+trade.data$cloCw <- trade.data$Closeness.Centrality...Competition * trade.data$abs.nx
+trade.data$clustCw <- trade.data$Clustering.Coefficient...Competition * trade.data$abs.nx
+
+xmu.in <- c()
+xmu.out <- c()
+xmu.bet <- c()
+xmu.eig <- c()
+xmu.clo <- c()
+xmu.clust <- c()
+xmu.bet.co <- c()
+xmu.eig.co <- c()
+xmu.clo.co <- c()
+xmu.clust.co <- c()
+
+for (i in 1:length(years)) {
+  
+  tmp <- trade.data[which(trade.data$Year == years[i]),]
+  xmu.in <- c(xmu.in, mean(tmp$indegw) / sum(tmp$abs.nx))
+  xmu.out <- c(xmu.out, mean(tmp$outdegw) / sum(tmp$abs.nx))
+  xmu.bet <- c(xmu.bet, mean(tmp$betw) / sum(tmp$abs.nx))
+  xmu.eig <- c(xmu.eig, mean(tmp$eigw) / sum(tmp$abs.nx))
+  xmu.clo <- c(xmu.clo, mean(tmp$clow) / sum(tmp$abs.nx))
+  xmu.clust <- c(xmu.clust, mean(tmp$clustw) / sum(tmp$abs.nx))
+  xmu.bet.co <- c(xmu.bet.co, mean(tmp$betCw) / sum(tmp$abs.nx))
+  xmu.eig.co <- c(xmu.eig.co, mean(tmp$eigCw) / sum(tmp$abs.nx))
+  xmu.clo.co <- c(xmu.clo.co, mean(tmp$cloCw) / sum(tmp$abs.nx))
+  xmu.clust.co <- c(xmu.clust.co, mean(tmp$clustCw) / sum(tmp$abs.nx))
+  
+}
+
+xmu.in0 <- xmu.in[2:11]
+xmu.out0 <- xmu.out[2:11]
+xmu.bet0 <- xmu.bet[2:11]
+xmu.eig0 <- xmu.eig[2:11]
+xmu.clo0 <- xmu.clo[2:11]
+xmu.clust0 <- xmu.clust[2:11]
+xmu.bet.co0 <- xmu.bet.co[2:11]
+xmu.eig.co0 <- xmu.eig.co[2:11]
+xmu.clo.co0 <- xmu.clo.co[2:11]
+xmu.clust.co0 <- xmu.clust.co[2:11]
+
+xmu.in1 <- xmu.in[12:21]
+xmu.out1 <- xmu.out[12:21]
+xmu.bet1 <- xmu.bet[12:21]
+xmu.eig1 <- xmu.eig[12:21]
+xmu.clo1 <- xmu.clo[12:21]
+xmu.clust1 <- xmu.clust[12:21]
+xmu.bet.co1 <- xmu.bet.co[12:21]
+xmu.eig.co1 <- xmu.eig.co[12:21]
+xmu.clo.co1 <- xmu.clo.co[12:21]
+xmu.clust.co1 <- xmu.clust.co[12:21]
+
+xt.in <- t.test(xmu.in0, xmu.in1, paired = TRUE)
+xt.out <- t.test(xmu.out0, xmu.out1, paired = TRUE)
+xt.bet <- t.test(xmu.bet0, xmu.bet1, paired = TRUE)
+xt.eig <- t.test(xmu.eig0, xmu.eig1, paired = TRUE)
+xt.clo <- t.test(xmu.clo0, xmu.clo1, paired = TRUE)
+xt.clust <- t.test(xmu.clust0, xmu.clust1, paired = TRUE)
+xt.bet.co <- t.test(xmu.bet.co0, xmu.bet.co1, paired = TRUE)
+xt.eig.co <- t.test(xmu.eig.co0, xmu.eig.co1, paired = TRUE)
+xt.clo.co <- t.test(xmu.clo.co0, xmu.clo.co1, paired = TRUE)
+xt.clust.co <- t.test(xmu.clust.co0, xmu.clust.co1, paired = TRUE)
+
 # Plots of the distributions of centrality measures
 
 nations <- unique(all.data$Nation)
