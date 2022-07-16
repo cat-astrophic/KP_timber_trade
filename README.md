@@ -4,7 +4,7 @@ This repo contains the scripts necessary for a paper looking at the impact of th
 
 To replicate this project, simply run:
 
-1. KP_timber_trade_network.py (this runs the network analyses but must call teh script competition_graph.py)
+1. KP_timber_trade_network.py (this runs the network analyses but must call the script competition_graph.py from my (Competition Graph repo)[https://github.com/cat-astrophic/competition_graph])
 2. KP_timber_trade.R (this runs the econometric analyses)
 3. KP_timber_trade_results_tables.py (this creates nicely formatted LaTeX tables for the paper)
 
