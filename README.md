@@ -8,4 +8,6 @@ To replicate this project, simply run:
 2. KP_timber_trade.R (this runs the econometric analyses)
 3. KP_timber_trade_results_tables.py (this creates nicely formatted LaTeX tables for the paper)
 
+*Be sure to update relevant working directory info at the beginning of each script!*
+
 The paper is currently under review at *Renewable and Sustainable Energy Reviews*.
