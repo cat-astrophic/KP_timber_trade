@@ -10,12 +10,11 @@ import competition_graph as cg
 
 # Directroy info
 
-username = ''
-direc = 'C:/Users/' + username + '/Documents/Data/KP_timber_trade/'
+direc = 'D:/KP_timber_trade/'
 
 # Loading the data
 
-data = pd.read_csv(direc + 'data/Forestry_Trade_Flows_E_All_Data.csv')
+data = pd.read_csv(direc + 'data/Forestry_Trade_Flows_E_All_Data.csv', encoding = 'latin-1')
 
 # Data prep
 
@@ -358,23 +357,22 @@ nx.set_node_attributes(N, te, 'te')
 
 node_color_bc = [float(N.nodes[v]['bc']) for v in N]
 node_color_ec = [float(N.nodes[v]['ec']) for v in N]
-node_size = [10*float(N.nodes[v]['te']) / mute for v in N]
+node_size = [50*float(N.nodes[v]['te']) / mute for v in N]
 
 # Setting node labels
 
-nations[15] = 'BEL'
 nations[29] = 'CAN'
 nations[33] = 'CHI'
 nations[57] = 'FRA'
 nations[62] = 'GER'
+nations[73] = 'IND'
 nations[79] = 'ITA'
 nations[81] = 'JAP'
 nations[101] = 'MEX'
-nations[107] = 'NED'
 nations[125] = 'KOR'
-nations[143] = 'SPA'
 nations[162] = 'UK'
 nations[164] = 'USA'
+nations[169] = 'VIE'
 mapping = dict(zip(N, nations))
 N = nx.relabel_nodes(N, mapping)
 
@@ -387,7 +385,7 @@ def drawer(cent):
         cent = 5.68152066e-03
         
     theta = 2 * np.pi * np.random.rand(1)[0]
-    r = np.sqrt(1 / cent)
+    r = (1 / cent)**(1/3)
     a = r * np.cos(theta)
     b = r * np.sin(theta)
     
@@ -397,7 +395,7 @@ locs = [drawer(node_color_ec[x]) for x in range(len(nations))]
 pos = dict(zip(nations, locs))
 
 labels = {}
-keeps_ids = [15, 29, 33, 57, 62, 79, 81, 101, 107, 125, 143, 162, 164]
+keeps_ids = [29, 33, 57, 62, 73, 79, 81, 101, 125, 162, 164, 169]
 keeps = [nations[k] for k in keeps_ids]
 
 for n in N.nodes():
@@ -406,13 +404,12 @@ for n in N.nodes():
         
         labels[n] = n
 
-#pos = nx.spring_layout(N, k = 150)
-#nodes_bc = nx.draw_networkx_nodes(N, pos, node_size = node_size, node_color = node_color_bc, alpha = 0.5)
-nodes_ec = nx.draw_networkx_nodes(N, pos, node_size = node_size, node_color = node_color_ec, alpha = 0.5)
+plt.figure(figsize = (8, 6), dpi = 1000)
+nodes = nx.draw_networkx_nodes(N, pos, node_size = node_size, node_color = 'orange', alpha = 0.5)
 edges = nx.draw_networkx_edges(N, pos, edge_color = 'lightgray', arrows = False, width = 0.05)
 nx.draw_networkx_labels(N, pos, labels, font_size = 5)
-cbar = plt.colorbar(mappable = nodes_ec, cax = None, ax = None, fraction = 0.015, pad = 0.04)
-cbar.set_label('Eigenvector Centrality')
+#cbar = plt.colorbar(mappable = nodes_ec, cax = None, ax = None, fraction = 0.015, pad = 0.04)
+#cbar.set_label('Eigenvector Centrality')
 plt.title('Global Timber Trade Network - 2017', fontsize = 12)
 plt.margins(.0666,.0666)
 plt.axis('off')
@@ -423,18 +420,19 @@ plt.savefig(direc + 'figures/timber_trade_network.eps', dpi = 1000)
 
 N2 = nx.subgraph(N, keeps)
 
-keeps_ids2 = [29, 143, 107, 162, 62, 15, 81, 57, 79, 164, 33, 125, 101]
-keeps2 = [nations[k] for k in keeps_ids2]
+keeps2 = list(N2.nodes)
+keeps_ids2 = [list(nations).index(k) for k in keeps2]
 locs2 = [locs[x] for x in keeps_ids2]
 pos2 = dict(zip(keeps2, locs2))
-labels2 = {k:k for k in keeps2}
 node_size2 = [node_size[x] for x in keeps_ids2]
-node_color_ec2 = [node_color_ec[x] for x in keeps_ids2]
-nodes_ec2 = nx.draw_networkx_nodes(N2, pos2, node_size = node_size2, node_color = node_color_ec2, alpha = 0.5)
-edges2 = nx.draw_networkx_edges(N2, pos2, edge_color = 'gray', arrows = True, width = 0.05)
-nx.draw_networkx_labels(N2, pos2, labels2, font_size = 5)
-cbar = plt.colorbar(mappable = nodes_ec2, cax = None, ax = None, fraction = 0.015, pad = 0.04)
-cbar.set_label('Eigenvector Centrality')
+#node_color_ec2 = [node_color_ec[x] for x in keeps_ids2]
+
+plt.figure(figsize = (8, 6), dpi = 1000)
+nodes_ec2 = nx.draw_networkx_nodes(N2, pos2, node_size = node_size2, node_color = 'orange', alpha = 0.5)
+edges2 = nx.draw_networkx_edges(N2, pos2, edge_color = 'gray', arrows = True, width = 0.2)
+nx.draw_networkx_labels(N2, pos2, labels, font_size = 5)
+#cbar = plt.colorbar(mappable = nodes_ec2, cax = None, ax = None, fraction = 0.015, pad = 0.04)
+#cbar.set_label('Eigenvector Centrality')
 plt.title('Global Timber Trade Network - 2017\n(Highest Eigenvector Centralities)', fontsize = 12)
 plt.margins(.0666,.0666)
 plt.axis('off')
@@ -444,42 +442,66 @@ plt.savefig(direc + 'figures/timber_trade_network2.eps', dpi = 1000)
 # Repeating for the competition graph
 
 A = cg.competition_graph(M)
+A = A - np.eye(len(A))*np.diag(A)
 G = nx.Graph(A)
 
 bcg = nx.betweenness_centrality(G, weight = 'weight')
 ecg = nx.eigenvector_centrality(G, weight = 'weight')
+teg = dict(zip(G.nodes, sum(M)))
 nx.set_node_attributes(G, bcg, 'bc')
 nx.set_node_attributes(G, ecg, 'ec')
-nx.set_node_attributes(G, te, 'te')
+nx.set_node_attributes(G, teg, 'te')
 node_color_bcg = [float(G.nodes[v]['bc']) for v in G]
 node_color_ecg = [float(G.nodes[v]['ec']) for v in G]
-node_sizeg = [10*float(G.nodes[v]['te']) / mute for v in G]
+node_sizeg = [50*float(G.nodes[v]['te']) / mute for v in G]
 
-nodes_ecg = nx.draw_networkx_nodes(G, pos, node_size = node_sizeg, node_color = node_color_ecg, alpha = 0.5)
-edgesg = nx.draw_networkx_edges(G, pos, edge_color = 'lightgray', arrows = False, width = 0.05)
-nx.draw_networkx_labels(G, pos, labels, font_size = 5)
-cbar = plt.colorbar(mappable = nodes_ecg, cax = None, ax = None, fraction = 0.015, pad = 0.04)
-cbar.set_label('Eigenvector Centrality')
+mappingg = dict(zip(G, nations))
+G = nx.relabel_nodes(G, mappingg)
+
+#locsg_input = [(x - min(bcg.values())) / (max(bcg.values()) - min(bcg.values())) for x in bcg.values()]
+#locsg = [drawer(locsg_input[x]) for x in range(len(nations))]
+locsg = [drawer(100*list(bcg.values())[x]) for x in range(len(nations))]
+posg = dict(zip(nations, locsg))
+
+labels = {}
+keeps_ids = [29, 33, 57, 62, 81, 164]
+keeps = [nations[k] for k in keeps_ids]
+
+for n in N.nodes():
+    
+    if n in keeps:
+        
+        labels[n] = n
+
+plt.figure(figsize = (8, 6), dpi = 1000)
+nodes_ecg = nx.draw_networkx_nodes(G, posg, node_size = node_sizeg, node_color = 'orange', alpha = 0.5)
+edgesg = nx.draw_networkx_edges(G, posg, edge_color = 'lightgray', arrows = False, width = 0.05)
+nx.draw_networkx_labels(G, posg, labels, font_size = 5)
+#cbar = plt.colorbar(mappable = nodes_ecg, cax = None, ax = None, fraction = 0.015, pad = 0.04)
+#cbar.set_label('Eigenvector Centrality')
 plt.title('Global Timber Trade Competition Graph - 2017', fontsize = 12)
 plt.margins(.0666,.0666)
 plt.axis('off')
 plt.savefig(direc + 'figures/timber_trade_comp_graph.png', dpi = 1000)
 plt.savefig(direc + 'figures/timber_trade_comp_graph.eps', dpi = 1000)
 
+# And the subgraph of the competition graph
+
 G2 = nx.subgraph(G, keeps)
 
-keeps_ids2 = [29, 143, 107, 162, 62, 15, 81, 57, 79, 164, 33, 125, 101]
-keeps2 = [nations[k] for k in keeps_ids2]
-locs2 = [locs[x] for x in keeps_ids2]
-pos2 = dict(zip(keeps2, locs2))
-labels2 = {k:k for k in keeps2}
-node_sizeg2 = [node_sizeg[x] for x in keeps_ids2]
-node_color_ecg2 = [node_color_ecg[x] for x in keeps_ids2]
-nodes_ecg2 = nx.draw_networkx_nodes(G2, pos2, node_size = node_sizeg2, node_color = node_color_ecg2, alpha = 0.5)
-edgesg2 = nx.draw_networkx_edges(G2, pos2, edge_color = 'gray', arrows = False, width = 0.05)
-nx.draw_networkx_labels(N2, pos2, labels2, font_size = 5)
-cbar = plt.colorbar(mappable = nodes_ecg2, cax = None, ax = None, fraction = 0.015, pad = 0.04)
-cbar.set_label('Eigenvector Centrality')
+keepsg2 = list(G2.nodes)
+keepsg_ids2 = [list(nations).index(k) for k in keepsg2]
+locsg2 = [locsg[x] for x in keepsg_ids2]
+posg2 = dict(zip(keepsg2, locsg2))
+node_sizeg2 = [node_sizeg[x] for x in keepsg_ids2]
+#node_color_ecg2 = [node_color_ecg[x] for x in keepsg_ids2]
+
+plt.figure(figsize = (8, 6), dpi = 1000)
+nodes_ecg2 = nx.draw_networkx_nodes(G2, posg2, node_size = node_sizeg2, node_color = 'orange', alpha = 0.5)
+edgesg2 = nx.draw_networkx_edges(G2, posg2, edge_color = 'gray', arrows = False, width = 0.2)
+nx.draw_networkx_labels(N2, posg2, labels, font_size = 5)
+#cbar = plt.colorbar(mappable = nodes_ecg2, cax = None, ax = None, fraction = 0.015, pad = 0.04)
+#cbar.set_label('Eigenvector Centrality')
 plt.title('Global Timber Trade Competition Graph - 2017\n(Highest Eigenvector Centralities)', fontsize = 12)
 plt.margins(.0666,.0666)
 plt.axis('off')
