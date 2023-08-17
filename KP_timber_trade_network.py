@@ -404,9 +404,9 @@ for n in N.nodes():
         
         labels[n] = n
 
-plt.figure(figsize = (8, 6), dpi = 1000)
+plt.figure(figsize = (6, 6), dpi = 1000)
 nodes = nx.draw_networkx_nodes(N, pos, node_size = node_size, node_color = 'orange', alpha = 0.5)
-edges = nx.draw_networkx_edges(N, pos, edge_color = 'lightgray', arrows = False, width = 0.05)
+edges = nx.draw_networkx_edges(N, pos, node_size = node_size, edge_color = 'lightgray', arrows = False, width = 0.05)
 nx.draw_networkx_labels(N, pos, labels, font_size = 5)
 #cbar = plt.colorbar(mappable = nodes_ec, cax = None, ax = None, fraction = 0.015, pad = 0.04)
 #cbar.set_label('Eigenvector Centrality')
@@ -427,9 +427,9 @@ pos2 = dict(zip(keeps2, locs2))
 node_size2 = [node_size[x] for x in keeps_ids2]
 #node_color_ec2 = [node_color_ec[x] for x in keeps_ids2]
 
-plt.figure(figsize = (8, 6), dpi = 1000)
+plt.figure(figsize = (6, 6), dpi = 1000)
 nodes_ec2 = nx.draw_networkx_nodes(N2, pos2, node_size = node_size2, node_color = 'orange', alpha = 0.5)
-edges2 = nx.draw_networkx_edges(N2, pos2, edge_color = 'gray', arrows = True, width = 0.2)
+edges2 = nx.draw_networkx_edges(N2, pos2, node_size = node_size2, edge_color = 'gray', arrows = True, width = 0.2)
 nx.draw_networkx_labels(N2, pos2, labels, font_size = 5)
 #cbar = plt.colorbar(mappable = nodes_ec2, cax = None, ax = None, fraction = 0.015, pad = 0.04)
 #cbar.set_label('Eigenvector Centrality')
@@ -473,9 +473,9 @@ for n in N.nodes():
         
         labels[n] = n
 
-plt.figure(figsize = (8, 6), dpi = 1000)
+plt.figure(figsize = (6, 6), dpi = 1000)
 nodes_ecg = nx.draw_networkx_nodes(G, posg, node_size = node_sizeg, node_color = 'orange', alpha = 0.5)
-edgesg = nx.draw_networkx_edges(G, posg, edge_color = 'lightgray', arrows = False, width = 0.05)
+edgesg = nx.draw_networkx_edges(G, posg, node_size = node_sizeg, edge_color = 'lightgray', arrows = False, width = 0.05)
 nx.draw_networkx_labels(G, posg, labels, font_size = 5)
 #cbar = plt.colorbar(mappable = nodes_ecg, cax = None, ax = None, fraction = 0.015, pad = 0.04)
 #cbar.set_label('Eigenvector Centrality')
@@ -496,9 +496,9 @@ posg2 = dict(zip(keepsg2, locsg2))
 node_sizeg2 = [node_sizeg[x] for x in keepsg_ids2]
 #node_color_ecg2 = [node_color_ecg[x] for x in keepsg_ids2]
 
-plt.figure(figsize = (8, 6), dpi = 1000)
+plt.figure(figsize = (6, 6), dpi = 1000)
 nodes_ecg2 = nx.draw_networkx_nodes(G2, posg2, node_size = node_sizeg2, node_color = 'orange', alpha = 0.5)
-edgesg2 = nx.draw_networkx_edges(G2, posg2, edge_color = 'gray', arrows = False, width = 0.2)
+edgesg2 = nx.draw_networkx_edges(G2, posg2, node_size = node_sizeg2, edge_color = 'gray', arrows = True, width = 0.2)
 nx.draw_networkx_labels(N2, posg2, labels, font_size = 5)
 #cbar = plt.colorbar(mappable = nodes_ecg2, cax = None, ax = None, fraction = 0.015, pad = 0.04)
 #cbar.set_label('Eigenvector Centrality')
