@@ -6,8 +6,7 @@ import pandas as pd
 
 # Directory info
 
-username = ''
-direc = 'C:/Users/' + username + '/Documents/Data/KP_timber_trade/results/'
+direc = 'D:/KP_timber_trade/results/'
 
 # Reading in the tables
 
