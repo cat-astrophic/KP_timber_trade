@@ -10,8 +10,7 @@ library(modelsummary)
 
 # Directory info
 
-username <- ''
-direc <- paste('C:/Users/', username, '/Documents/Data/KP_timber_trade/', sep = '')
+direc <- paste('D:/KP_timber_trade/', sep = '')
 
 # Reading in the forest products trade data
 
@@ -41,7 +40,7 @@ nations.delta.pre <- c('Bolivia (Plurinational State of)', "Cï¿½te d'Ivoire")
 nations.delta.post <- c('Bolivia', "Cote d'Ivoire")
 nations.drop <- c('Belgium-Luxembourg', 'Netherlands Antilles (former)', 'Serbia and Montenegro')
 conations.delta.pre <- c('Bahamas, The', 'Congo, Dem. Rep.', 'Congo, Rep.', 'Czech Republic',
-                         'Egypt, Arab Rep.', 'Gambia, The', 'Iran, Islamic Rep.', 'Korea, Dem. Peopleâ???Ts Rep.',
+                         'Egypt, Arab Rep.', 'Gambia, The', 'Iran, Islamic Rep.', 'Korea, Dem. People????Ts Rep.',
                          'Korea, Rep.', 'Kyrgyz Republic', 'Lao PDR', 'Moldova', 'Slovak Republic',
                          'St. Vincent and the Grenadines', 'Sudan', 'Tanzania', 'United States',
                          'Venezuela, RB', 'Vietnam', 'Yemen, Rep.')
@@ -58,21 +57,21 @@ nations.post.ids <- which(nations %in% nations.delta.pre)
 conations.post.ids <- which(conations %in% conations.delta.pre)
 
 for (i in 1:length(nations.post.ids)) {
-  
+
   nations[nations.post.ids[i]] <- nations.delta.post[i]
-  
+
 }
 
 for (d in nations.drop) {
-  
+
   nations <- nations[nations != d]
-  
+
 }
 
 for (i in 1:length(conations.post.ids)) {
-  
+
 conations[conations.post.ids[i]] <- conations.delta.post[i]
-  
+
 }
 
 names(controls)[1] <- 'Nation'
@@ -95,11 +94,11 @@ wood.chips.and.particles <- merge(wood.chips.and.particles, controls, by = c('Na
 
 # Further adding KP indicator variables
 
-kp.nations <- c('Australia', 'Austria', 'Belarus', 'Belgium', 'Bulgaria', 'Canada', 'Croatia', 
-                'Cyprus', 'Czechia', 'Denmark', 'Estonia', 'Finland', 'France', 'Germany', 
-                'Greece', 'Hungary', 'Iceland', 'Ireland', 'Italy', 'Japan', 'Kazakhstan', 
-                'Latvia', 'Lithuania', 'Luxembourg', 'Netherlands', 'New Zealand', 'Norway', 
-                'Poland', 'Portugal', 'Romania', 'Russian Federation', 'Slovakia', 
+kp.nations <- c('Australia', 'Austria', 'Belarus', 'Belgium', 'Bulgaria', 'Canada', 'Croatia',
+                'Cyprus', 'Czechia', 'Denmark', 'Estonia', 'Finland', 'France', 'Germany',
+                'Greece', 'Hungary', 'Iceland', 'Ireland', 'Italy', 'Japan', 'Kazakhstan',
+                'Latvia', 'Lithuania', 'Luxembourg', 'Netherlands', 'New Zealand', 'Norway',
+                'Poland', 'Portugal', 'Romania', 'Russian Federation', 'Slovakia',
                 'Slovenia', 'Spain', 'Sweden', 'Switzerland', 'Ukraine', 'United Kingdom')
 kp.nations.1 <- c('Canada', 'Japan',  'New Zealand', 'Russian Federation')
 kp.nations.2 <- c('Belarus', 'Cyprus', 'Kazakhstan')
@@ -190,7 +189,7 @@ df <- all.data[which(all.data$Nation == 'Afghanistan'),]
 rownames(df) <- 1:nrow(df)
 
 for (i in 1:13) {
-  
+
   ts1 <- df$Average.Clustering.Coefficient...Trade[1:21]
   ts2 <- df$Average.Clustering.Coefficient...Trade[22:42]
   ts3 <- df$Average.Clustering.Coefficient...Trade[43:63]
@@ -204,7 +203,7 @@ for (i in 1:13) {
   ts11 <- df$Average.Clustering.Coefficient...Trade[211:231]
   ts12 <- df$Average.Clustering.Coefficient...Trade[232:252]
   ts13 <- df$Average.Clustering.Coefficient...Trade[253:273]
-  
+
   cs1 <- df$Average.Clustering.Coefficient...Comp[1:21]
   cs2 <- df$Average.Clustering.Coefficient...Comp[22:42]
   cs3 <- df$Average.Clustering.Coefficient...Comp[43:63]
@@ -218,7 +217,7 @@ for (i in 1:13) {
   cs11 <- df$Average.Clustering.Coefficient...Comp[211:231]
   cs12 <- df$Average.Clustering.Coefficient...Comp[232:252]
   cs13 <- df$Average.Clustering.Coefficient...Comp[253:273]
-  
+
 }
 
 ts.df <- as.data.frame(cbind(years,ts1,ts2,ts3,ts4,ts5,ts6,ts7,ts8,ts9,ts10,ts11,ts12,ts13))
@@ -289,7 +288,7 @@ mu.clo.co <- c()
 mu.clust.co <- c()
 
 for (i in 1:length(years)) {
-  
+
   tmp <- trade.data[which(trade.data$Year == years[i]),]
   mu.in <- c(mu.in, mean(tmp$In.Degree.Centrality...Trade))
   mu.out <- c(mu.out, mean(tmp$Out.Degree.Centrality...Trade))
@@ -301,7 +300,7 @@ for (i in 1:length(years)) {
   mu.eig.co <- c(mu.eig.co, mean(tmp$Eigenvector.Centrality...Competition))
   mu.clo.co <- c(mu.clo.co, mean(tmp$Closeness.Centrality...Competition))
   mu.clust.co <- c(mu.clust.co, mean(tmp$Clustering.Coefficient...Competition))
-  
+
 }
 
 mu.in0 <- mu.in[2:11]
@@ -363,7 +362,7 @@ xmu.clo.co <- c()
 xmu.clust.co <- c()
 
 for (i in 1:length(years)) {
-  
+
   tmp <- trade.data[which(trade.data$Year == years[i]),]
   xmu.in <- c(xmu.in, mean(tmp$indegw) / sum(tmp$abs.nx))
   xmu.out <- c(xmu.out, mean(tmp$outdegw) / sum(tmp$abs.nx))
@@ -375,7 +374,7 @@ for (i in 1:length(years)) {
   xmu.eig.co <- c(xmu.eig.co, mean(tmp$eigCw) / sum(tmp$abs.nx))
   xmu.clo.co <- c(xmu.clo.co, mean(tmp$cloCw) / sum(tmp$abs.nx))
   xmu.clust.co <- c(xmu.clust.co, mean(tmp$clustCw) / sum(tmp$abs.nx))
-  
+
 }
 
 xmu.in0 <- xmu.in[2:11]
@@ -441,7 +440,7 @@ post.cluster.co <- c()
 #network.code <- c()
 
 for (n in 1:length(nations)) {
-  
+
   tmp <- trade.data[which(trade.data$Nation == nations[n]),]
   kp.idx <- c(kp.idx, mean(tmp$KP))
   gdp.pc <- c(gdp.pc, tmp$GDP.per.capita..constant.2010.US..[which(tmp$Year == 2008)])
@@ -466,17 +465,17 @@ for (n in 1:length(nations)) {
   post.eig.cen.co <- c(post.eig.cen.co, mean(tmp$Eigenvector.Centrality...Competition[which(tmp$Year >= 2008)], na.rm = TRUE))
   post.clo.cen.co <- c(post.clo.cen.co, mean(tmp$Closeness.Centrality...Competition[which(tmp$Year >= 2008)], na.rm = TRUE))
   post.cluster.co <- c(post.cluster.co, mean(tmp$Clustering.Coefficient...Competition[which(tmp$Year >= 2008)], na.rm = TRUE))
-  
+
   if (mean(tmp$KP) == 1) {
-    
+
     kp.idx2 <- c(kp.idx2, 'Treated')
-    
+
   } else {
-    
+
     kp.idx2 <- c(kp.idx2, 'Control')
-    
+
   }
-  
+
 }
 
 cm.plots.df <- as.data.frame(cbind(kp.idx, gdp.pc, forest.area, pre.in.deg, pre.out.deg,
@@ -21851,4 +21850,21 @@ names(comp.three) <- c('Market', 'Betweenness Centrality', 'Closeness Centrality
 
 write.csv(comp.three, paste(direc, 'results/competition_3_iv.csv', sep = ''), row.names = FALSE)
 
+# Computing f-statistics
+
+f0 <- lm(KP ~ ICC, data = trade.data)
+f1 <- lm(KP ~ ICC, data = fibreboard)
+f2 <- lm(KP ~ ICC, data = industrial.roundwood.coniferous)
+f3 <- lm(KP ~ ICC, data = industrial.roundwood.non.coniferous.non.tropical)
+f4 <- lm(KP ~ ICC, data = industrial.roundwood.non.coniferous.tropical)
+f5 <- lm(KP ~ ICC, data = newsprint)
+f6 <- lm(KP ~ ICC, data = paper.and.paperboard)
+f7 <- lm(KP ~ ICC, data = plywood)
+f8 <- lm(KP ~ ICC, data = sawnwood.coniferous)
+f9 <- lm(KP ~ ICC, data = sawnwood.non.coniferous)
+f10 <- lm(KP ~ ICC, data = veneer.sheets)
+f11 <- lm(KP ~ ICC, data = wood.chips.and.particles)
+f12 <- lm(KP ~ ICC, data = wood.pulp)
+
+stargazer(f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, type = 'text')
 
