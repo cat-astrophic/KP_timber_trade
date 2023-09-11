@@ -361,6 +361,7 @@ node_size = [50*float(N.nodes[v]['te']) / mute for v in N]
 
 # Setting node labels
 
+nations[21] = 'BRA'
 nations[29] = 'CAN'
 nations[33] = 'CHI'
 nations[57] = 'FRA'
@@ -370,6 +371,8 @@ nations[79] = 'ITA'
 nations[81] = 'JAP'
 nations[101] = 'MEX'
 nations[125] = 'KOR'
+nations[128] = 'RUS'
+nations[147] = 'SWE'
 nations[162] = 'UK'
 nations[164] = 'USA'
 nations[169] = 'VIE'
@@ -386,6 +389,29 @@ def drawer(cent):
         
     theta = 2 * np.pi * np.random.rand(1)[0]
     r = (1 / cent)**(1/3)
+    a = r * np.cos(theta)
+    b = r * np.sin(theta)
+    
+    return [a,b]
+
+def drawer2(cent,smoop):
+    
+    vals = [21, 29, 33, 57, 62, 81, 128, 147, 164]
+    also_vals = [0, 40, 80, 120, 160, 200, 240, 280, 320]
+    
+    if cent < 5.68152066e-03:
+        
+        cent = 5.68152066e-03
+        
+    if smoop in vals:
+        
+        theta = also_vals[vals.index(smoop)]
+        
+    else:
+        
+        theta = 2 * np.pi * np.random.rand(1)[0]
+        
+    r = (1 / cent)**(1/2.345)
     a = r * np.cos(theta)
     b = r * np.sin(theta)
     
@@ -460,11 +486,11 @@ G = nx.relabel_nodes(G, mappingg)
 
 #locsg_input = [(x - min(bcg.values())) / (max(bcg.values()) - min(bcg.values())) for x in bcg.values()]
 #locsg = [drawer(locsg_input[x]) for x in range(len(nations))]
-locsg = [drawer(100*list(bcg.values())[x]) for x in range(len(nations))]
+locsg = [drawer2(100*list(bcg.values())[x],x) for x in range(len(nations))]
 posg = dict(zip(nations, locsg))
 
 labels = {}
-keeps_ids = [29, 33, 57, 62, 81, 164]
+keeps_ids = [21, 29, 33, 57, 62, 81, 128, 147, 164]
 keeps = [nations[k] for k in keeps_ids]
 
 for n in N.nodes():
@@ -502,7 +528,7 @@ edgesg2 = nx.draw_networkx_edges(G2, posg2, node_size = node_sizeg2, edge_color 
 nx.draw_networkx_labels(N2, posg2, labels, font_size = 5)
 #cbar = plt.colorbar(mappable = nodes_ecg2, cax = None, ax = None, fraction = 0.015, pad = 0.04)
 #cbar.set_label('Eigenvector Centrality')
-plt.title('Global Timber Trade Competition Graph - 2017\n(Highest Eigenvector Centralities)', fontsize = 12)
+plt.title('Global Timber Trade Competition Graph - 2017\n(Highest Betweenness Centralities)', fontsize = 12)
 plt.margins(.0666,.0666)
 plt.axis('off')
 plt.savefig(direc + 'figures/timber_trade_comp_graph2.png', dpi = 1000)
