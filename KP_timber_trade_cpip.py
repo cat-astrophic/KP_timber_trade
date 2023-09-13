@@ -143,3 +143,61 @@ plt.xticks([1997, 1999, 2001, 2003, 2005, 2007, 2009, 2011, 2013, 2015, 2017], [
 plt.legend(['Competition Graph', 'Trade Network'], bbox_to_anchor = (1.4321, 0.666))
 plt.savefig(direc + 'figures/core_sizes.png', bbox_inches = 'tight', dpi = 1000)
 
+# Creating data for a table on national level core memberships frequencies
+
+trade_nats = []
+comp_nats = []
+
+for i in range(len(core_df)):
+    
+    xt = core_df.Trade[i]
+    xc = core_df.Competition[i]
+    
+    for x in xt:
+        
+        if x not in trade_nats:
+            
+            trade_nats.append(x)
+            
+    for x in xc:
+        
+        if x not in comp_nats:
+            
+            comp_nats.append(x)
+
+trade_freqs = []
+comp_freqs = []
+
+for n in trade_nats:
+    
+    c = 0
+    
+    for x in core_df.Trade:
+        
+        if n in x:
+            
+            c += 1
+            
+    trade_freqs.append(c)
+
+for n in comp_nats:
+    
+    c = 0
+    
+    for x in core_df.Competition:
+        
+        if n in x:
+            
+            c += 1
+            
+    comp_freqs.append(c)
+
+trade_tab_df = pd.concat([pd.Series(trade_nats, name = 'Nation'), pd.Series(trade_freqs, name = 'Frequency')], axis = 1)
+comp_tab_df = pd.concat([pd.Series(comp_nats, name = 'Nation'), pd.Series(comp_freqs, name = 'Frequency')], axis = 1)
+
+trade_tab_df = trade_tab_df.sort_values(by = ['Frequency'], ascending = False)
+comp_tab_df = comp_tab_df.sort_values(by = ['Frequency'], ascending = False)
+
+trade_tab_df.to_csv(direc + 'results/trade_cores_table.csv', index = False)
+comp_tab_df.to_csv(direc + 'results/comp_cores_table.csv', index = False)
+
