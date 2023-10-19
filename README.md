@@ -1,6 +1,6 @@
 # KP_timber_trade
 
-This repo contains the scripts necessary for a paper looking at the impact of the Kyoto Protocol on the structure of the global timber trade network and the competition graph derived therefrom. Data comes from FAOstat (the file name is: Forestry_Trade_Flows_E_All_Data.csv) and can be downloaded freely from them.
+This repo contains the scripts necessary for a paper studying the impact of the Kyoto Protocol on the structure of the global timber trade network and the competition graph derived therefrom. The paper has been published in [*Renewable and Sustainable Energy Reviews*](https://www.sciencedirect.com/science/article/pii/S136403212300727X). Data comes from FAOstat (the file name is: Forestry_Trade_Flows_E_All_Data.csv) and can be downloaded freely from them.
 
 To replicate this project, simply run:
 
@@ -10,4 +10,25 @@ To replicate this project, simply run:
 
 *Be sure to update relevant working directory info at the beginning of each script!*
 
-The paper is currently under review at *Renewable and Sustainable Energy Reviews*.
+## Citation
+
+### APA:
+
+Cary, M. (2023). Climate policy boosts trade competitiveness: Evidence from timber trade networks. Renewable and Sustainable Energy Reviews, 188, 113869.
+
+### MLA:
+
+Cary, Michael. "Climate policy boosts trade competitiveness: Evidence from timber trade networks." Renewable and Sustainable Energy Reviews 188 (2023): 113869.
+
+### Bibtex:
+
+@article{cary2023climate,
+&nbsp;&nbsp;&nbsp;&nbsp;title={Climate policy boosts trade competitiveness: Evidence from timber trade networks},
+&nbsp;&nbsp;&nbsp;&nbsp;author={Cary, Michael},
+&nbsp;&nbsp;&nbsp;&nbsp;journal={Renewable and Sustainable Energy Reviews},
+&nbsp;&nbsp;&nbsp;&nbsp;volume={188},
+&nbsp;&nbsp;&nbsp;&nbsp;pages={113869},
+year={2023},
+&nbsp;&nbsp;&nbsp;&nbsp;publisher={Elsevier}
+}
+
